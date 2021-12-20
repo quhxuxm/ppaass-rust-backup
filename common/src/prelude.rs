@@ -1,5 +1,3 @@
-use std::net::IpAddr::V4;
-
 pub use crate::agent::*;
 pub use crate::error::*;
 use crate::prelude::PpaassAddressType::{Domain, IpV4, IpV6};
@@ -141,4 +139,14 @@ pub enum PpaassMessageBodyEncryptionType {
     Plain,
     Blowfish,
     AES,
+}
+
+impl From<PpaassMessageBodyEncryptionType> for u8 {
+    fn from(value: PpaassMessageBodyEncryptionType) -> Self {
+        match value {
+            PpaassMessageBodyEncryptionType::Blowfish => 1,
+            PpaassMessageBodyEncryptionType::AES => 2,
+            PpaassMessageBodyEncryptionType::Plain => 0
+        }
+    }
 }
