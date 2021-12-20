@@ -1,3 +1,5 @@
+use bytes::{Buf, BufMut, Bytes, BytesMut};
+
 pub use crate::agent::*;
 pub use crate::error::*;
 use crate::prelude::PpaassAddressType::{Domain, IpV4, IpV6};
@@ -43,17 +45,17 @@ pub struct PpaassAddress {
 impl TryFrom<Vec<u8>> for PpaassAddress {
     type Error = PpaassError;
 
-    fn try_from(mut value: Vec<u8>) -> Result<Self, Self::Error> {
-        let address_type_byte = value.pop().ok_or(PpaassError::FailToParsePpaassAddressType)?;
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        let mut value = Bytes::from(value);
+        let address_type_byte = value.get_u8();
         let address_type = PpaassAddressType::try_from(address_type_byte)?;
         match address_type {
             IpV4 => {
                 let mut host = Vec::<u8>::new();
                 for i in 0..4 {
-                    host.push(value.pop().ok_or(PpaassError::FailToParsePpaassIpv4Address)?);
+                    host.push(value.get_u8());
                 }
-                let port = u16::from_le_bytes([value.pop().ok_or(PpaassError::FailToParsePpaassIpv4Address)?,
-                    value.pop().ok_or(PpaassError::FailToParsePpaassIpv4Address)?]);
+                let port = value.get_u16();
                 Ok(
                     Self {
                         host,
@@ -64,10 +66,9 @@ impl TryFrom<Vec<u8>> for PpaassAddress {
             IpV6 => {
                 let mut host = Vec::<u8>::new();
                 for i in 0..16 {
-                    host.push(value.pop().ok_or(PpaassError::FailToParsePpaassIpv6Address)?);
+                    host.push(value.get_u8());
                 }
-                let port = u16::from_le_bytes([value.pop().ok_or(PpaassError::FailToParsePpaassIpv6Address)?,
-                    value.pop().ok_or(PpaassError::FailToParsePpaassIpv6Address)?]);
+                let port = value.get_u16();
                 Ok(
                     Self {
                         host,
@@ -76,13 +77,12 @@ impl TryFrom<Vec<u8>> for PpaassAddress {
                     })
             }
             Domain => {
-                let domain_name_length = value.pop().ok_or(PpaassError::FailToParsePpaassDomainAddress)?;
+                let domain_name_length = value.get_u64();
                 let mut host = Vec::<u8>::new();
                 for i in 0..domain_name_length {
-                    host.push(value.pop().ok_or(PpaassError::FailToParsePpaassDomainAddress)?);
+                    host.push(value.get_u8());
                 }
-                let port = u16::from_le_bytes([value.pop().ok_or(PpaassError::FailToParsePpaassDomainAddress)?,
-                    value.pop().ok_or(PpaassError::FailToParsePpaassDomainAddress)?]);
+                let port = value.get_u16();
                 Ok(
                     Self {
                         host,
@@ -96,27 +96,27 @@ impl TryFrom<Vec<u8>> for PpaassAddress {
 
 impl From<PpaassAddress> for Vec<u8> {
     fn from(address: PpaassAddress) -> Self {
-        let mut result = Vec::<u8>::new();
+        let mut result = BytesMut::new();
         match address.address_type {
             IpV4 => {
-                result.push(IpV4.into());
-                result.extend(address.host);
-                result.extend(address.port.to_le_bytes());
-                result
+                result.put_u8(IpV4.into());
+                result.put_slice(address.host.as_slice());
+                result.put_u16(address.port);
+                result.to_vec()
             }
             IpV6 => {
-                result.push(IpV6.into());
-                result.extend(address.host);
-                result.extend(address.port.to_le_bytes());
-                result
+                result.put_u8(IpV6.into());
+                result.put_slice(address.host.as_slice());
+                result.put_u16(address.port);
+                result.to_vec()
             }
             Domain => {
-                result.push(Domain.into());
+                result.put_u8(Domain.into());
                 let domain_name_length = address.host.len();
-                result.push(domain_name_length as u8);
-                result.extend(address.host);
-                result.extend(address.port.to_le_bytes());
-                result
+                result.put_u64(domain_name_length as u64);
+                result.put_slice(address.host.as_slice());
+                result.put_u16(address.port);
+                result.to_vec()
             }
         }
     }
