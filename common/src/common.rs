@@ -1,4 +1,6 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
+use rand::thread_rng;
+use uuid::{Builder, Uuid};
 
 pub use crate::agent::*;
 use crate::common::PpaassAddressType::{Domain, IpV4, IpV6};
@@ -141,6 +143,14 @@ pub enum PpaassMessagePayloadEncryptionType {
     AES,
 }
 
+impl PpaassMessagePayloadEncryptionType {
+    fn random() -> Self {
+        // let value = rand::random::<u8>() %3;
+        // value.try_into().unwrap()
+        Self::Blowfish
+    }
+}
+
 impl From<PpaassMessagePayloadEncryptionType> for u8 {
     fn from(value: PpaassMessagePayloadEncryptionType) -> Self {
         match value {
@@ -176,6 +186,30 @@ pub struct PpaassMessage {
     pub encrypted_payload: Vec<u8>,
 }
 
+impl PpaassMessage {
+    pub fn new_with_random_encryption_type(payload_encryption_token: Vec<u8>,
+                                           encrypted_payload: Vec<u8>) -> Self {
+        let id: Vec<u8> = Uuid::new_v4().as_bytes().to_vec();
+        let payload_encryption_type = PpaassMessagePayloadEncryptionType::random();
+        Self {
+            id,
+            payload_encryption_token,
+            payload_encryption_type,
+            encrypted_payload,
+        }
+    }
+    pub fn new(payload_encryption_token: Vec<u8>,
+               payload_encryption_type: PpaassMessagePayloadEncryptionType,
+               encrypted_payload: Vec<u8>) -> Self {
+        let id: Vec<u8> = Uuid::new_v4().as_bytes().to_vec();
+        Self {
+            id,
+            payload_encryption_token,
+            payload_encryption_type,
+            encrypted_payload,
+        }
+    }
+}
 
 impl From<PpaassMessage> for Vec<u8> {
     fn from(value: PpaassMessage) -> Self {
