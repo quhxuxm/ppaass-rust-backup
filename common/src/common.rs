@@ -1,6 +1,5 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use rand::thread_rng;
-use uuid::{Builder, Uuid};
+use uuid::Uuid;
 
 pub use crate::agent::*;
 use crate::common::PpaassAddressType::{Domain, IpV4, IpV6};
