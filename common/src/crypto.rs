@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{BufMut, BytesMut};
 use crypto::{aessafe, blowfish};
 use crypto::symmetriccipher::{BlockDecryptor, BlockEncryptor};
 use rand::rngs::OsRng;

@@ -38,9 +38,9 @@ impl From<PpaassAddressType> for u8 {
 
 /// The address
 pub struct PpaassAddress {
-    pub host: Vec<u8>,
-    pub port: u16,
-    pub address_type: PpaassAddressType,
+    host: Vec<u8>,
+    port: u16,
+    address_type: PpaassAddressType,
 }
 
 impl TryFrom<Vec<u8>> for PpaassAddress {
@@ -176,13 +176,13 @@ impl TryFrom<u8> for PpaassMessagePayloadEncryptionType {
 /// The message
 pub struct PpaassMessage {
     /// The message id
-    pub id: Vec<u8>,
+    id: Vec<u8>,
     /// The payload encryption token
-    pub payload_encryption_token: Vec<u8>,
+    payload_encryption_token: Vec<u8>,
     /// The payload encryption type
-    pub payload_encryption_type: PpaassMessagePayloadEncryptionType,
+    payload_encryption_type: PpaassMessagePayloadEncryptionType,
     /// The encrypted payload
-    pub encrypted_payload: Vec<u8>,
+    encrypted_payload: Vec<u8>,
 }
 
 impl PpaassMessage {
@@ -207,6 +207,21 @@ impl PpaassMessage {
             payload_encryption_type,
             encrypted_payload,
         }
+    }
+}
+
+impl PpaassMessage {
+    pub fn id(&self) -> &Vec<u8> {
+        &self.id
+    }
+    pub fn payload_encryption_token(&self) -> &Vec<u8> {
+        &self.payload_encryption_token
+    }
+    pub fn payload_encryption_type(&self) -> &PpaassMessagePayloadEncryptionType {
+        &self.payload_encryption_type
+    }
+    pub fn encrypted_payload(&self) -> &Vec<u8> {
+        &self.encrypted_payload
     }
 }
 

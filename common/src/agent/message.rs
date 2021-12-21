@@ -38,15 +38,43 @@ impl TryFrom<u8> for PpaassAgentMessagePayloadType {
 /// The agent message payload
 pub struct PpaassAgentMessagePayload {
     /// The user token
-    pub user_token: Vec<u8>,
+    user_token: Vec<u8>,
     /// The source address
-    pub source_address: PpaassAddress,
+    source_address: PpaassAddress,
     /// The target address
-    pub target_address: PpaassAddress,
+    target_address: PpaassAddress,
     /// The payload type
-    pub payload_type: PpaassAgentMessagePayloadType,
+    payload_type: PpaassAgentMessagePayloadType,
     /// The data
-    pub data: Vec<u8>,
+    data: Vec<u8>,
+}
+
+impl PpaassAgentMessagePayload {
+    pub fn new(user_token: Vec<u8>,
+               source_address: PpaassAddress,
+               target_address: PpaassAddress,
+               payload_type: PpaassAgentMessagePayloadType,
+               data: Vec<u8>) -> Self {
+        PpaassAgentMessagePayload { user_token, source_address, target_address, payload_type, data }
+    }
+}
+
+impl PpaassAgentMessagePayload {
+    pub fn user_token(&self) -> &Vec<u8> {
+        &self.user_token
+    }
+    pub fn source_address(&self) -> &PpaassAddress {
+        &self.source_address
+    }
+    pub fn target_address(&self) -> &PpaassAddress {
+        &self.target_address
+    }
+    pub fn payload_type(&self) -> &PpaassAgentMessagePayloadType {
+        &self.payload_type
+    }
+    pub fn data(&self) -> &Vec<u8> {
+        &self.data
+    }
 }
 
 impl From<PpaassAgentMessagePayload> for Vec<u8> {

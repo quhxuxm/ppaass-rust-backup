@@ -6,3 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+ppaass_common = { path = "../common", package = "common" }
+tokio = {version="1.15.0", features=["full"]}
+uuid = {version="0.8.2", features=["v4"]}

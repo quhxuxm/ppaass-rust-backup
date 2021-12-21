@@ -50,15 +50,43 @@ impl TryFrom<u8> for PpaassProxyMessagePayloadType {
 /// The proxy message payload
 pub struct PpaassProxyMessagePayload {
     /// The user token
-    pub user_token: Vec<u8>,
+    user_token: Vec<u8>,
     /// The source address
-    pub source_address: PpaassAddress,
+    source_address: PpaassAddress,
     /// The target address
-    pub target_address: PpaassAddress,
+    target_address: PpaassAddress,
     /// The payload type
-    pub payload_type: PpaassProxyMessagePayloadType,
+    payload_type: PpaassProxyMessagePayloadType,
     /// The data
-    pub data: Vec<u8>,
+    data: Vec<u8>,
+}
+
+impl PpaassProxyMessagePayload {
+    pub fn new(user_token: Vec<u8>,
+               source_address: PpaassAddress,
+               target_address: PpaassAddress,
+               payload_type: PpaassProxyMessagePayloadType,
+               data: Vec<u8>) -> Self {
+        PpaassProxyMessagePayload { user_token, source_address, target_address, payload_type, data }
+    }
+}
+
+impl PpaassProxyMessagePayload {
+    pub fn user_token(&self) -> &Vec<u8> {
+        &self.user_token
+    }
+    pub fn source_address(&self) -> &PpaassAddress {
+        &self.source_address
+    }
+    pub fn target_address(&self) -> &PpaassAddress {
+        &self.target_address
+    }
+    pub fn payload_type(&self) -> &PpaassProxyMessagePayloadType {
+        &self.payload_type
+    }
+    pub fn data(&self) -> &Vec<u8> {
+        &self.data
+    }
 }
 
 impl From<PpaassProxyMessagePayload> for Vec<u8> {

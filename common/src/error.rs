@@ -1,3 +1,5 @@
+use std::error::Error;
+
 #[derive(thiserror::Error, Debug)]
 pub enum PpaassError {
     #[error("Fail to parse ppaass ip v4 address")]
@@ -23,9 +25,11 @@ pub enum PpaassError {
         source: rsa::errors::Error
     },
     #[error("I/O error happen")]
-    IoError{
+    IoError {
         source: std::io::Error
     },
     #[error("A unknown ppaass error happen.")]
-    Other,
+    Other {
+        source: Box<dyn Error>
+    },
 }
