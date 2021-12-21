@@ -39,28 +39,26 @@ impl RsaUtil {
     }
 
 
-    pub(crate) fn encrypt(&self, target: &[u8]) -> Result<Bytes, PpaassError> {
+    pub(crate) fn encrypt(&self, target: &[u8]) -> Result<Vec<u8>, PpaassError> {
         let public_key = RsaPublicKey::from_public_key_pem(self.public_key.as_str()).
             map_err(|source| PpaassError::FailToParseRsaKey { source })?;
         let mut rng = OsRng;
-        Ok(Bytes::from(public_key.encrypt(
+        public_key.encrypt(
             &mut rng,
             PaddingScheme::PKCS1v15Encrypt,
             target,
-        ).map_err(|source| PpaassError::FailToEncryptDataWithRsa { source })?))
+        ).map_err(|source| PpaassError::FailToEncryptDataWithRsa { source })
     }
 
-    pub(crate) fn decrypt(&self, target: &[u8]) -> Result<Bytes, PpaassError> {
+    pub(crate) fn decrypt(&self, target: &[u8]) -> Result<Vec<u8>, PpaassError> {
         let private_key = RsaPrivateKey::from_pkcs8_pem(self.private_key.as_str()).
             map_err(|source| PpaassError::FailToParseRsaKey { source })?;
-        Ok(Bytes::from(
-            private_key.decrypt(PaddingScheme::PKCS1v15Encrypt, target).
-                map_err(|source| PpaassError::FailToEncryptDataWithRsa { source })?,
-        ))
+        private_key.decrypt(PaddingScheme::PKCS1v15Encrypt, target).
+            map_err(|source| PpaassError::FailToEncryptDataWithRsa { source })
     }
 }
 
-pub(crate) fn encrypt_with_aes(encryption_token: &[u8], target: &[u8]) -> Bytes {
+pub(crate) fn encrypt_with_aes(encryption_token: &[u8], target: &[u8]) -> Vec<u8> {
     let mut result = BytesMut::new();
     let aes_encryptor = aessafe::AesSafe256Encryptor::new(encryption_token);
     let target_chunks = target.chunks(AES_CHUNK_LENGTH);
@@ -73,10 +71,10 @@ pub(crate) fn encrypt_with_aes(encryption_token: &[u8], target: &[u8]) -> Bytes 
         aes_encryptor.encrypt_block(chunk_to_encrypt, chunk_encrypted);
         result.put_slice(chunk_encrypted);
     }
-    result.freeze()
+    result.to_vec()
 }
 
-pub(crate) fn decrypt_with_aes(encryption_token: &[u8], target: &[u8]) -> Bytes {
+pub(crate) fn decrypt_with_aes(encryption_token: &[u8], target: &[u8]) -> Vec<u8> {
     let mut result = BytesMut::new();
     let aes_decryptor = aessafe::AesSafe256Decryptor::new(encryption_token);
     let target_chunks = target.chunks(AES_CHUNK_LENGTH);
@@ -89,11 +87,11 @@ pub(crate) fn decrypt_with_aes(encryption_token: &[u8], target: &[u8]) -> Bytes 
         aes_decryptor.decrypt_block(chunk_to_decrypt, chunk_decrypted);
         result.put_slice(chunk_decrypted);
     }
-    result.freeze()
+    result.to_vec()
 }
 
 
-pub(crate) fn encrypt_with_blowfish(encryption_token: &[u8], target: &[u8]) -> Bytes {
+pub(crate) fn encrypt_with_blowfish(encryption_token: &[u8], target: &[u8]) -> Vec<u8> {
     let mut result = BytesMut::new();
     let blowfish_encryption = blowfish::Blowfish::new(encryption_token);
     let target_chunks = target.chunks(BLOWFISH_CHUNK_LENGTH);
@@ -106,10 +104,10 @@ pub(crate) fn encrypt_with_blowfish(encryption_token: &[u8], target: &[u8]) -> B
         blowfish_encryption.encrypt_block(chunk_to_encrypt, chunk_encrypted);
         result.put_slice(chunk_encrypted);
     }
-    result.freeze()
+    result.to_vec()
 }
 
-pub(crate) fn decrypt_with_blowfish(encryption_token: &[u8], target: &[u8]) -> Bytes {
+pub(crate) fn decrypt_with_blowfish(encryption_token: &[u8], target: &[u8]) -> Vec<u8> {
     let mut result = BytesMut::new();
     let blowfish_encryption = blowfish::Blowfish::new(encryption_token);
     let target_chunks = target.chunks(BLOWFISH_CHUNK_LENGTH);
@@ -122,5 +120,5 @@ pub(crate) fn decrypt_with_blowfish(encryption_token: &[u8], target: &[u8]) -> B
         blowfish_encryption.decrypt_block(chunk_to_decrypt, chunk_decrypted);
         result.put_slice(chunk_decrypted);
     }
-    result.freeze()
+    result.to_vec()
 }
