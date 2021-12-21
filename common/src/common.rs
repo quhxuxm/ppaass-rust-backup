@@ -1,8 +1,8 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 pub use crate::agent::*;
+use crate::common::PpaassAddressType::{Domain, IpV4, IpV6};
 pub use crate::error::*;
-use crate::prelude::PpaassAddressType::{Domain, IpV4, IpV6};
 pub use crate::proxy::*;
 
 /// The address type in Ppaass common
@@ -20,7 +20,7 @@ impl TryFrom<u8> for PpaassAddressType {
             1 => Ok(IpV4),
             2 => Ok(IpV6),
             3 => Ok(Domain),
-            _ => Err(PpaassError::FailToParsePpaassAddressType)
+            _ => Err(PpaassError::FailToParsePpaassAddressType(value))
         }
     }
 }
@@ -135,18 +135,81 @@ impl PpaassAddress {
 }
 
 /// The body encryption type
-pub enum PpaassMessageBodyEncryptionType {
+pub enum PpaassMessagePayloadEncryptionType {
     Plain,
     Blowfish,
     AES,
 }
 
-impl From<PpaassMessageBodyEncryptionType> for u8 {
-    fn from(value: PpaassMessageBodyEncryptionType) -> Self {
+impl From<PpaassMessagePayloadEncryptionType> for u8 {
+    fn from(value: PpaassMessagePayloadEncryptionType) -> Self {
         match value {
-            PpaassMessageBodyEncryptionType::Blowfish => 1,
-            PpaassMessageBodyEncryptionType::AES => 2,
-            PpaassMessageBodyEncryptionType::Plain => 0
+            PpaassMessagePayloadEncryptionType::Plain => 0,
+            PpaassMessagePayloadEncryptionType::Blowfish => 1,
+            PpaassMessagePayloadEncryptionType::AES => 2,
         }
+    }
+}
+
+impl TryFrom<u8> for PpaassMessagePayloadEncryptionType {
+    type Error = PpaassError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(PpaassMessagePayloadEncryptionType::Plain),
+            1 => Ok(PpaassMessagePayloadEncryptionType::Blowfish),
+            2 => Ok(PpaassMessagePayloadEncryptionType::AES),
+            _ => Err(PpaassError::FailToParsePpaassMessagePayloadEncryptionType(value))
+        }
+    }
+}
+
+/// The message
+pub struct PpaassMessage {
+    /// The message id
+    pub id: Vec<u8>,
+    /// The payload encryption token
+    pub payload_encryption_token: Vec<u8>,
+    /// The payload encryption type
+    pub payload_encryption_type: PpaassMessagePayloadEncryptionType,
+    /// The encrypted payload
+    pub encrypted_payload: Vec<u8>,
+}
+
+
+impl From<PpaassMessage> for Vec<u8> {
+    fn from(value: PpaassMessage) -> Self {
+        let mut result = BytesMut::new();
+        let id_length = value.id.len();
+        result.put_u64(id_length as u64);
+        result.put_slice(value.id.as_slice());
+        let encryption_token_length = value.payload_encryption_token.len();
+        result.put_u64(encryption_token_length as u64);
+        result.put_slice(value.payload_encryption_token.as_slice());
+        result.put_u8(value.payload_encryption_type.into());
+        result.put_slice(value.encrypted_payload.as_slice());
+        result.to_vec()
+    }
+}
+
+impl TryFrom<Vec<u8>> for PpaassMessage {
+    type Error = PpaassError;
+
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        let mut bytes = Bytes::from(value);
+        let id_length = bytes.get_u64();
+        let id_bytes = bytes.copy_to_bytes(id_length as usize);
+        let id: Vec<u8> = id_bytes.to_vec();
+        let payload_encryption_token_length = bytes.get_u64();
+        let payload_encryption_token_bytes = bytes.copy_to_bytes(payload_encryption_token_length as usize);
+        let payload_encryption_token = payload_encryption_token_bytes.to_vec();
+        let payload_encryption_type: PpaassMessagePayloadEncryptionType = bytes.get_u8().try_into()?;
+        let encrypted_payload = Vec::from(bytes.chunk());
+        Ok(Self {
+            id,
+            payload_encryption_type,
+            payload_encryption_token,
+            encrypted_payload,
+        })
     }
 }
