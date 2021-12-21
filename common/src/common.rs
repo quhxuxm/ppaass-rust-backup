@@ -187,6 +187,7 @@ impl From<PpaassMessage> for Vec<u8> {
         result.put_u64(encryption_token_length as u64);
         result.put_slice(value.payload_encryption_token.as_slice());
         result.put_u8(value.payload_encryption_type.into());
+        result.put_u64(value.encrypted_payload.len() as u64);
         result.put_slice(value.encrypted_payload.as_slice());
         result.to_vec()
     }
@@ -204,7 +205,8 @@ impl TryFrom<Vec<u8>> for PpaassMessage {
         let payload_encryption_token_bytes = bytes.copy_to_bytes(payload_encryption_token_length as usize);
         let payload_encryption_token = payload_encryption_token_bytes.to_vec();
         let payload_encryption_type: PpaassMessagePayloadEncryptionType = bytes.get_u8().try_into()?;
-        let encrypted_payload = Vec::from(bytes.chunk());
+        let encrypted_payload_length = bytes.get_u64() as usize;
+        let encrypted_payload = bytes.copy_to_bytes(encrypted_payload_length).to_vec();
         Ok(Self {
             id,
             payload_encryption_type,
