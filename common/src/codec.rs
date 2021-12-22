@@ -5,6 +5,7 @@ use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 use crate::common::{PpaassMessage, PpaassMessagePayloadEncryptionType};
 use crate::crypto::{decrypt_with_aes, decrypt_with_blowfish, encrypt_with_aes, encrypt_with_blowfish, RsaCrypto};
 use crate::error::PpaassCommonError;
+use log::{debug, error};
 
 pub struct PpaassMessageCryptoCodec {
     rsa_crypto: RsaCrypto,

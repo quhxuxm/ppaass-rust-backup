@@ -7,6 +7,7 @@ pub use crate::error::*;
 pub use crate::proxy::*;
 
 /// The address type in Ppaass common
+#[derive(Debug)]
 pub enum PpaassAddressType {
     IpV4,
     IpV6,
@@ -37,6 +38,7 @@ impl From<PpaassAddressType> for u8 {
 }
 
 /// The address
+#[derive(Debug)]
 pub struct PpaassAddress {
     host: Vec<u8>,
     port: u16,
@@ -135,6 +137,7 @@ impl PpaassAddress {
 }
 
 /// The body encryption type
+#[derive(Debug)]
 pub enum PpaassMessagePayloadEncryptionType {
     Plain,
     Blowfish,
@@ -173,6 +176,7 @@ impl TryFrom<u8> for PpaassMessagePayloadEncryptionType {
 }
 
 /// The message
+#[derive(Debug)]
 pub struct PpaassMessage {
     /// The message id
     id: Vec<u8>,

@@ -3,6 +3,7 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use crate::common::*;
 
 /// The proxy message payload type
+#[derive(Debug)]
 pub enum PpaassProxyMessagePayloadType {
     TcpConnectSuccess,
     TcpConnectFail,
@@ -48,6 +49,7 @@ impl TryFrom<u8> for PpaassProxyMessagePayloadType {
 }
 
 /// The proxy message payload
+#[derive(Debug)]
 pub struct PpaassProxyMessagePayload {
     /// The user token
     user_token: Vec<u8>,

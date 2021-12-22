@@ -14,6 +14,7 @@ const AES_CHUNK_LENGTH: usize = 16;
 const RSA_BIT_SIZE: usize = 2048;
 
 /// The util to do RSA encryption and decryption.
+#[derive(Debug)]
 pub(crate) struct RsaCrypto {
     /// The private used to do decryption
     private_key: String,

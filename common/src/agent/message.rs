@@ -3,6 +3,7 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use crate::common::*;
 
 /// The agent message body type
+#[derive(Debug)]
 pub enum PpaassAgentMessagePayloadType {
     TcpConnect,
     TcpData,
@@ -36,6 +37,7 @@ impl TryFrom<u8> for PpaassAgentMessagePayloadType {
 }
 
 /// The agent message payload
+#[derive(Debug)]
 pub struct PpaassAgentMessagePayload {
     /// The user token
     user_token: Vec<u8>,

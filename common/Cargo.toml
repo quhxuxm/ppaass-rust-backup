@@ -13,3 +13,4 @@ rust-crypto = "0.2.36"
 uuid = {version="0.8.2", features=["v4"]}
 tokio-util = { version = "0.6.9", features = ["codec"] }
 lz4 = "1.23.2"
+log = "0.4.14"
