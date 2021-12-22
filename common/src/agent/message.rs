@@ -22,7 +22,7 @@ impl From<PpaassAgentMessagePayloadType> for u8 {
 }
 
 impl TryFrom<u8> for PpaassAgentMessagePayloadType {
-    type Error = PpaassError;
+    type Error = PpaassCommonError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
@@ -30,7 +30,7 @@ impl TryFrom<u8> for PpaassAgentMessagePayloadType {
             2 => Ok(PpaassAgentMessagePayloadType::TcpData),
             3 => Ok(PpaassAgentMessagePayloadType::UdpAssociate),
             4 => Ok(PpaassAgentMessagePayloadType::UdpData),
-            _ => Err(PpaassError::FailToParsePpaassAgentMessagePayloadType(value))
+            _ => Err(PpaassCommonError::FailToParsePpaassAgentMessagePayloadType(value))
         }
     }
 }
@@ -99,7 +99,7 @@ impl From<PpaassAgentMessagePayload> for Vec<u8> {
 }
 
 impl TryFrom<Vec<u8>> for PpaassAgentMessagePayload {
-    type Error = PpaassError;
+    type Error = PpaassCommonError;
 
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
         let mut bytes = Bytes::from(value);

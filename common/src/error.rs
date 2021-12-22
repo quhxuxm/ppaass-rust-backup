@@ -1,7 +1,7 @@
 use std::error::Error;
 
 #[derive(thiserror::Error, Debug)]
-pub enum PpaassError {
+pub enum PpaassCommonError {
     #[error("Fail to parse ppaass ip v4 address")]
     FailToParsePpaassIpv4Address,
     #[error("Fail to parse ppaass ip v6 address")]
@@ -26,7 +26,7 @@ pub enum PpaassError {
     },
     #[error("I/O error happen")]
     IoError {
-        source: std::io::Error
+       #[from] source: std::io::Error
     },
     #[error("A unknown ppaass error happen.")]
     Other {

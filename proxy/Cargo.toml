@@ -9,3 +9,5 @@ edition = "2021"
 ppaass_common = { path = "../common", package = "common" }
 tokio = {version="1.15.0", features=["full"]}
 uuid = {version="0.8.2", features=["v4"]}
+thiserror = "1.0.30"
+anyhow = "1.0.51"

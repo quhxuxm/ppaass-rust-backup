@@ -4,10 +4,10 @@ mod test {
     use uuid::Uuid;
 
     use common::common::PpaassMessage;
-    use common::error::PpaassError;
+    use common::error::PpaassCommonError;
 
     #[test]
-    fn test_ppaass_message_to_bytes() -> Result<(), PpaassError> {
+    fn test_ppaass_message_to_bytes() -> Result<(), PpaassCommonError> {
         let random_data = Uuid::new_v4().as_bytes().to_vec();
         let payload_encryption_token = random_data.clone();
         let encrypted_payload = random_data.clone();

@@ -7,54 +7,41 @@ use rand::rngs::OsRng;
 use rsa::{PaddingScheme, PublicKey, RsaPrivateKey, RsaPublicKey};
 use rsa::pkcs8::{FromPrivateKey, FromPublicKey};
 
-use crate::error::PpaassError;
+use crate::error::PpaassCommonError;
 
 const BLOWFISH_CHUNK_LENGTH: usize = 8;
 const AES_CHUNK_LENGTH: usize = 16;
 const RSA_BIT_SIZE: usize = 2048;
 
-
 /// The util to do RSA encryption and decryption.
-pub(crate) struct RsaUtil {
+pub(crate) struct RsaCrypto {
     /// The private used to do decryption
     private_key: String,
     /// The public used to do encryption
     public_key: String,
 }
 
-impl RsaUtil {
-    fn read_key_content(key_path: &'static Path) -> Result<String, PpaassError> {
-        std::fs::read_to_string(key_path).map_err(|source| PpaassError::IoError { source })
-    }
-
-    pub fn new(public_key_path: &'static Path, private_key_path: &'static Path) -> Result<Self, PpaassError> {
-        let private_key =
-            Self::read_key_content(private_key_path)?;
-        let public_key =
-            Self::read_key_content(public_key_path)?;
-        Ok(Self {
+impl RsaCrypto {
+    pub fn new(public_key: String, private_key: String) -> Self {
+        Self {
             public_key,
             private_key,
-        })
+        }
     }
 
-
-    pub(crate) fn encrypt(&self, target: &[u8]) -> Result<Vec<u8>, PpaassError> {
-        let public_key = RsaPublicKey::from_public_key_pem(self.public_key.as_str()).
-            map_err(|source| PpaassError::FailToParseRsaKey { source })?;
+    pub(crate) fn encrypt(&self, target: &[u8]) -> Result<Vec<u8>, PpaassCommonError> {
+        let public_key = RsaPublicKey::from_public_key_pem(self.public_key.as_str()).map_err(|source| PpaassCommonError::FailToParseRsaKey { source })?;
         let mut rng = OsRng;
         public_key.encrypt(
             &mut rng,
             PaddingScheme::PKCS1v15Encrypt,
             target,
-        ).map_err(|source| PpaassError::FailToEncryptDataWithRsa { source })
+        ).map_err(|source| PpaassCommonError::FailToEncryptDataWithRsa { source })
     }
 
-    pub(crate) fn decrypt(&self, target: &[u8]) -> Result<Vec<u8>, PpaassError> {
-        let private_key = RsaPrivateKey::from_pkcs8_pem(self.private_key.as_str()).
-            map_err(|source| PpaassError::FailToParseRsaKey { source })?;
-        private_key.decrypt(PaddingScheme::PKCS1v15Encrypt, target).
-            map_err(|source| PpaassError::FailToEncryptDataWithRsa { source })
+    pub(crate) fn decrypt(&self, target: &[u8]) -> Result<Vec<u8>, PpaassCommonError> {
+        let private_key = RsaPrivateKey::from_pkcs8_pem(self.private_key.as_str()).map_err(|source| PpaassCommonError::FailToParseRsaKey { source })?;
+        private_key.decrypt(PaddingScheme::PKCS1v15Encrypt, target).map_err(|source| PpaassCommonError::FailToEncryptDataWithRsa { source })
     }
 }
 
@@ -89,7 +76,6 @@ pub(crate) fn decrypt_with_aes(encryption_token: &[u8], target: &[u8]) -> Vec<u8
     }
     result.to_vec()
 }
-
 
 pub(crate) fn encrypt_with_blowfish(encryption_token: &[u8], target: &[u8]) -> Vec<u8> {
     let mut result = BytesMut::new();
