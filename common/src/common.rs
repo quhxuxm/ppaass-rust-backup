@@ -190,9 +190,23 @@ pub struct PpaassMessage {
     payload: Vec<u8>,
 }
 
+#[derive(Debug)]
+pub struct PpaassMessageTakeResult {
+    /// The message id
+    pub id: Vec<u8>,
+    /// The user token
+    pub user_token: Vec<u8>,
+    /// The payload encryption token
+    pub payload_encryption_token: Vec<u8>,
+    /// The payload encryption type
+    pub payload_encryption_type: PpaassMessagePayloadEncryptionType,
+    /// The payload
+    pub payload: Vec<u8>,
+}
+
 impl PpaassMessage {
     pub fn new_with_random_encryption_type(user_token: Vec<u8>, payload_encryption_token: Vec<u8>,
-        payload: Vec<u8>) -> Self {
+                                           payload: Vec<u8>) -> Self {
         let id: Vec<u8> = Uuid::new_v4().as_bytes().to_vec();
         let payload_encryption_type = PpaassMessagePayloadEncryptionType::random();
         Self {
@@ -204,8 +218,8 @@ impl PpaassMessage {
         }
     }
     pub fn new(user_token: Vec<u8>, payload_encryption_token: Vec<u8>,
-        payload_encryption_type: PpaassMessagePayloadEncryptionType,
-        payload: Vec<u8>) -> Self {
+               payload_encryption_type: PpaassMessagePayloadEncryptionType,
+               payload: Vec<u8>) -> Self {
         let id: Vec<u8> = Uuid::new_v4().as_bytes().to_vec();
         Self {
             id,
@@ -213,6 +227,16 @@ impl PpaassMessage {
             payload_encryption_token,
             payload_encryption_type,
             payload,
+        }
+    }
+
+    pub fn take(self) -> PpaassMessageTakeResult {
+        PpaassMessageTakeResult {
+            id: self.id,
+            user_token: self.user_token,
+            payload_encryption_type: self.payload_encryption_type,
+            payload_encryption_token: self.payload_encryption_token,
+            payload: self.payload,
         }
     }
 }
@@ -224,26 +248,14 @@ impl PpaassMessage {
     pub fn user_token(&self) -> &Vec<u8> {
         &self.user_token
     }
-    pub fn take_user_token(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.user_token)
-    }
     pub fn payload_encryption_token(&self) -> &Vec<u8> {
         &self.payload_encryption_token
-    }
-    pub fn take_payload_encryption_token(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.payload_encryption_token)
     }
     pub fn payload_encryption_type(&self) -> &PpaassMessagePayloadEncryptionType {
         &self.payload_encryption_type
     }
-    pub fn take_payload_encryption_type(&mut self) -> PpaassMessagePayloadEncryptionType {
-        std::mem::replace(&mut self.payload_encryption_type, PpaassMessagePayloadEncryptionType::Plain)
-    }
     pub fn payload(&self) -> &Vec<u8> {
         &self.payload
-    }
-    pub fn take_payload(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.payload)
     }
 }
 

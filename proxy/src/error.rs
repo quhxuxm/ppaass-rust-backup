@@ -8,6 +8,6 @@ pub(crate) enum PpaassProxyError {
     InvalidTcpTransportStatus(String, TcpTransportStatus, TcpTransportStatus),
     #[error("Other error")]
     Other {
-        source: Box<dyn Error>
+        #[from] source: anyhow::Error
     },
 }
