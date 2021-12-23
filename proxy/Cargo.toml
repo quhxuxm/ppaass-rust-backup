@@ -12,3 +12,4 @@ uuid = {version="0.8.2", features=["v4"]}
 thiserror = "1.0.30"
 anyhow = "1.0.51"
 tokio-util = { version = "0.6.9", features = ["codec"] }
+futures = "0.3.19"

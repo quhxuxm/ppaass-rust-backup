@@ -28,8 +28,4 @@ pub enum PpaassCommonError {
     IoError {
        #[from] source: std::io::Error
     },
-    #[error("A unknown ppaass error happen.")]
-    Other {
-        source: Box<dyn Error>
-    },
 }

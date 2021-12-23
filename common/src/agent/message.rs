@@ -3,7 +3,7 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use crate::common::*;
 
 /// The agent message body type
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum PpaassAgentMessagePayloadType {
     TcpConnect,
     TcpData,
@@ -39,8 +39,6 @@ impl TryFrom<u8> for PpaassAgentMessagePayloadType {
 /// The agent message payload
 #[derive(Debug)]
 pub struct PpaassAgentMessagePayload {
-    /// The user token
-    user_token: Vec<u8>,
     /// The source address
     source_address: PpaassAddress,
     /// The target address
@@ -52,19 +50,15 @@ pub struct PpaassAgentMessagePayload {
 }
 
 impl PpaassAgentMessagePayload {
-    pub fn new(user_token: Vec<u8>,
-               source_address: PpaassAddress,
-               target_address: PpaassAddress,
-               payload_type: PpaassAgentMessagePayloadType,
-               data: Vec<u8>) -> Self {
-        PpaassAgentMessagePayload { user_token, source_address, target_address, payload_type, data }
+    pub fn new(source_address: PpaassAddress,
+        target_address: PpaassAddress,
+        payload_type: PpaassAgentMessagePayloadType,
+        data: Vec<u8>) -> Self {
+        PpaassAgentMessagePayload { source_address, target_address, payload_type, data }
     }
 }
 
 impl PpaassAgentMessagePayload {
-    pub fn user_token(&self) -> &Vec<u8> {
-        &self.user_token
-    }
     pub fn source_address(&self) -> &PpaassAddress {
         &self.source_address
     }
@@ -83,9 +77,6 @@ impl From<PpaassAgentMessagePayload> for Vec<u8> {
     fn from(value: PpaassAgentMessagePayload) -> Self {
         let mut result = BytesMut::new();
         result.put_u8(value.payload_type.into());
-        let user_token_length = value.user_token.len();
-        result.put_u64(user_token_length as u64);
-        result.put_slice(value.user_token.as_slice());
         let source_address: Vec<u8> = value.source_address.into();
         let source_address_length = source_address.len();
         result.put_u64(source_address_length as u64);
@@ -106,9 +97,6 @@ impl TryFrom<Vec<u8>> for PpaassAgentMessagePayload {
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
         let mut bytes = Bytes::from(value);
         let payload_type: PpaassAgentMessagePayloadType = bytes.get_u8().try_into()?;
-        let user_token_length = bytes.get_u64() as usize;
-        let user_token_bytes = bytes.copy_to_bytes(user_token_length);
-        let user_token = user_token_bytes.to_vec();
         let source_address_length = bytes.get_u64() as usize;
         let source_address_bytes = bytes.copy_to_bytes(source_address_length);
         let source_address = source_address_bytes.to_vec().try_into()?;
@@ -120,7 +108,6 @@ impl TryFrom<Vec<u8>> for PpaassAgentMessagePayload {
         let data = data_bytes.to_vec();
         Ok(Self {
             payload_type,
-            user_token,
             source_address,
             target_address,
             data,

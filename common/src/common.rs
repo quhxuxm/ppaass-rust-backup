@@ -134,6 +134,16 @@ impl PpaassAddress {
             address_type,
         }
     }
+
+    pub fn host(&self) -> &Vec<u8> {
+        &self.host
+    }
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+    pub fn address_type(&self) -> &PpaassAddressType {
+        &self.address_type
+    }
 }
 
 /// The body encryption type
@@ -191,7 +201,7 @@ pub struct PpaassMessage {
 }
 
 #[derive(Debug)]
-pub struct PpaassMessageTakeResult {
+pub struct PpaassMessageSplitResult {
     /// The message id
     pub id: Vec<u8>,
     /// The user token
@@ -206,7 +216,7 @@ pub struct PpaassMessageTakeResult {
 
 impl PpaassMessage {
     pub fn new_with_random_encryption_type(user_token: Vec<u8>, payload_encryption_token: Vec<u8>,
-                                           payload: Vec<u8>) -> Self {
+        payload: Vec<u8>) -> Self {
         let id: Vec<u8> = Uuid::new_v4().as_bytes().to_vec();
         let payload_encryption_type = PpaassMessagePayloadEncryptionType::random();
         Self {
@@ -218,8 +228,8 @@ impl PpaassMessage {
         }
     }
     pub fn new(user_token: Vec<u8>, payload_encryption_token: Vec<u8>,
-               payload_encryption_type: PpaassMessagePayloadEncryptionType,
-               payload: Vec<u8>) -> Self {
+        payload_encryption_type: PpaassMessagePayloadEncryptionType,
+        payload: Vec<u8>) -> Self {
         let id: Vec<u8> = Uuid::new_v4().as_bytes().to_vec();
         Self {
             id,
@@ -230,8 +240,8 @@ impl PpaassMessage {
         }
     }
 
-    pub fn take(self) -> PpaassMessageTakeResult {
-        PpaassMessageTakeResult {
+    pub fn split(self) -> PpaassMessageSplitResult {
+        PpaassMessageSplitResult {
             id: self.id,
             user_token: self.user_token,
             payload_encryption_type: self.payload_encryption_type,

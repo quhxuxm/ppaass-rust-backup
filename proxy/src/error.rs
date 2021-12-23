@@ -1,4 +1,6 @@
 use std::error::Error;
+use ppaass_common::agent::PpaassAgentMessagePayloadType;
+use ppaass_common::error::PpaassCommonError;
 
 use crate::transport::TcpTransportStatus;
 
@@ -6,8 +8,8 @@ use crate::transport::TcpTransportStatus;
 pub(crate) enum PpaassProxyError {
     #[error("Invalid tcp transport status, Transport: [{0}] require status: {1:#?}, get status: {2:#?}")]
     InvalidTcpTransportStatus(String, TcpTransportStatus, TcpTransportStatus),
-    #[error("Other error")]
-    Other {
-        #[from] source: anyhow::Error
-    },
+
+    #[error("Receive invalid agent message, Transport: [{0}] require status: {1:#?}, get status: {2:#?}")]
+    ReceiveInvalidAgentMessage(String, PpaassAgentMessagePayloadType, PpaassAgentMessagePayloadType),
 }
+

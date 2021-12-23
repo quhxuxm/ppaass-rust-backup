@@ -3,16 +3,16 @@ use log::debug;
 use lz4::block::{compress, decompress};
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 
-use crate::common::{PpaassMessage, PpaassMessagePayloadEncryptionType, PpaassMessageTakeResult};
+use crate::common::{PpaassMessage, PpaassMessagePayloadEncryptionType, PpaassMessageSplitResult};
 use crate::crypto::{decrypt_with_aes, decrypt_with_blowfish, encrypt_with_aes, encrypt_with_blowfish, RsaCrypto};
 use crate::error::PpaassCommonError;
 
-pub struct PpaassMessageCryptoCodec {
+pub struct PpaassMessageCodec {
     rsa_crypto: RsaCrypto,
     length_delimited_codec: LengthDelimitedCodec,
 }
 
-impl PpaassMessageCryptoCodec {
+impl PpaassMessageCodec {
     pub fn new(
         public_key: String, private_key: String, ) -> Self {
         Self {
@@ -22,7 +22,7 @@ impl PpaassMessageCryptoCodec {
     }
 }
 
-impl Decoder for PpaassMessageCryptoCodec {
+impl Decoder for PpaassMessageCodec {
     type Item = PpaassMessage;
     type Error = PpaassCommonError;
 
@@ -36,13 +36,13 @@ impl Decoder for PpaassMessageCryptoCodec {
         let lz4_decompress_result = decompress(lz4_bytes.as_slice(), None)?;
         let encrypted_ppaass_message: PpaassMessage = lz4_decompress_result.try_into()?;
         debug!("Decode ppaass message from input(encrypted): {:?}", encrypted_ppaass_message);
-        let PpaassMessageTakeResult {
+        let PpaassMessageSplitResult {
             payload_encryption_token: rsa_encrypted_payload_encryption_token,
             payload_encryption_type,
             user_token,
             payload: encrypted_payload,
             ..
-        } = encrypted_ppaass_message.take();
+        } = encrypted_ppaass_message.split();
         let original_payload = match payload_encryption_type {
             PpaassMessagePayloadEncryptionType::Plain => {
                 encrypted_payload
@@ -67,18 +67,18 @@ impl Decoder for PpaassMessageCryptoCodec {
     }
 }
 
-impl Encoder<PpaassMessage> for PpaassMessageCryptoCodec {
+impl Encoder<PpaassMessage> for PpaassMessageCodec {
     type Error = PpaassCommonError;
 
     fn encode(&mut self, original_message: PpaassMessage, dst: &mut BytesMut) -> Result<(), Self::Error> {
         debug!("Encode ppaass message to output(decrypted): {:?}", original_message);
-        let PpaassMessageTakeResult {
+        let PpaassMessageSplitResult {
             user_token,
             payload_encryption_type,
             payload_encryption_token,
             payload,
             ..
-        } = original_message.take();
+        } = original_message.split();
         let rsa_encrypted_payload_encryption_token = self.rsa_crypto.encrypt(payload_encryption_token.as_slice())?;
         let encrypted_payload = match payload_encryption_type {
             PpaassMessagePayloadEncryptionType::Plain => {
