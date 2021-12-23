@@ -1,17 +1,20 @@
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{SocketAddr};
 use std::time::SystemTime;
 
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use anyhow::Result;
+use futures_util::SinkExt;
 use futures::StreamExt;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+use log::debug;
+use tokio::io::AsyncBufReadExt;
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
-use tokio_util::codec::{Decoder, Framed, FramedRead};
+use tokio_util::codec::{Decoder, Framed};
 use uuid::Uuid;
 
 use ppaass_common::agent::{PpaassAgentMessagePayload, PpaassAgentMessagePayloadType};
 use ppaass_common::codec::PpaassMessageCodec;
-use ppaass_common::common::{PpaassAddressType, PpaassMessageSplitResult};
+use ppaass_common::common::PpaassMessageSplitResult;
 
 use crate::error::PpaassProxyError;
 
@@ -87,6 +90,7 @@ impl TcpTransport {
         let source_edge_stream = self.source_edge.take().context("")?;
         let ppaass_message_codec = PpaassMessageCodec::new("".to_string(), "".to_string());
         let source_edge_framed = ppaass_message_codec.framed(source_edge_stream);
+        let (source_edge_framed_write, source_edge_framed_read)=source_edge_framed.split();
         // Initialize the target edge stream
         let source_edge_framed = self.init(source_edge_framed).await?;
         if source_edge_framed.is_none() {
@@ -109,30 +113,19 @@ impl TcpTransport {
             return Ok(None);
         }
         let init_message = init_message.context("Fail to unwrap ppaass message from source edge.")??;
+        debug!("Receive agent message: {:#?}", init_message);
         let PpaassMessageSplitResult {
             id,
             user_token,
-            payload_encryption_token,
-            payload_encryption_type,
-            payload
+            payload,
+            ..
         } = init_message.split();
         let agent_message_body: PpaassAgentMessagePayload = payload.try_into()?;
         match agent_message_body.payload_type() {
             PpaassAgentMessagePayloadType::TcpConnect => {
-                let target_address = agent_message_body.target_address();
-                match target_address.address_type() {
-                    PpaassAddressType::IpV4 => {
-                        let target_socket_addr = SocketAddr::new(target_address.host().parse()?, target_address.port());
-                        TcpStream::connect();
-                    }
-                    PpaassAddressType::IpV6 => {
-                        TcpStream::connect();
-                    }
-                    PpaassAddressType::Domain => {
-                        TcpStream::connect();
-                    }
-                }
-
+                let target_address: SocketAddr = agent_message_body.target_address().try_into()?;
+                let target_stream = TcpStream::connect(target_address).await?;
+                self.target_edge = Some(target_stream);
             }
             status => {
                 let id = String::from_utf8(id)?;

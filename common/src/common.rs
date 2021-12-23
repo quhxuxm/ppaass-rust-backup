@@ -1,3 +1,6 @@
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::str::FromStr;
+
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use uuid::Uuid;
 
@@ -7,7 +10,7 @@ pub use crate::error::*;
 pub use crate::proxy::*;
 
 /// The address type in Ppaass common
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum PpaassAddressType {
     IpV4,
     IpV6,
@@ -43,6 +46,44 @@ pub struct PpaassAddress {
     host: Vec<u8>,
     port: u16,
     address_type: PpaassAddressType,
+}
+
+impl TryFrom<PpaassAddress> for SocketAddr {
+    type Error = PpaassCommonError;
+
+    fn try_from(value: PpaassAddress) -> Result<Self, Self::Error> {
+        (&value).try_into()
+    }
+}
+
+impl TryFrom<&PpaassAddress> for SocketAddr {
+    type Error = PpaassCommonError;
+
+    fn try_from(value: &PpaassAddress) -> Result<Self, Self::Error> {
+        match value.address_type {
+            PpaassAddressType::IpV4 => {
+                if value.host.len() < 4 {
+                    return Err(PpaassCommonError::FailToParsePpaassIpv4Address);
+                }
+                let mut ipv4_byte_array: [u8; 4] = [0; 4];
+                ipv4_byte_array.clone_from_slice(&value.host[..4]);
+                Ok(SocketAddr::new(IpAddr::V4(Ipv4Addr::from(ipv4_byte_array)), value.port))
+            }
+            PpaassAddressType::IpV6 => {
+                if value.host.len() < 16 {
+                    return Err(PpaassCommonError::FailToParsePpaassIpv6Address);
+                }
+                let mut ipv6_byte_array: [u8; 16] = [0; 16];
+                ipv6_byte_array.clone_from_slice(&value.host[..16]);
+                Ok(SocketAddr::new(IpAddr::V6(Ipv6Addr::from(ipv6_byte_array)), value.port()))
+            }
+            PpaassAddressType::Domain => {
+                Ok(SocketAddr::from_str(format!("{}:{}", String::from_utf8(value.host.to_vec())
+                    .map_err(|e| PpaassCommonError::FailToParsePpaassDomainAddress)?, value.port).as_str())
+                    .map_err(|e| PpaassCommonError::FailToParsePpaassDomainAddress)?)
+            }
+        }
+    }
 }
 
 impl TryFrom<Vec<u8>> for PpaassAddress {
@@ -216,7 +257,7 @@ pub struct PpaassMessageSplitResult {
 
 impl PpaassMessage {
     pub fn new_with_random_encryption_type(user_token: Vec<u8>, payload_encryption_token: Vec<u8>,
-        payload: Vec<u8>) -> Self {
+                                           payload: Vec<u8>) -> Self {
         let id: Vec<u8> = Uuid::new_v4().as_bytes().to_vec();
         let payload_encryption_type = PpaassMessagePayloadEncryptionType::random();
         Self {
@@ -228,8 +269,8 @@ impl PpaassMessage {
         }
     }
     pub fn new(user_token: Vec<u8>, payload_encryption_token: Vec<u8>,
-        payload_encryption_type: PpaassMessagePayloadEncryptionType,
-        payload: Vec<u8>) -> Self {
+               payload_encryption_type: PpaassMessagePayloadEncryptionType,
+               payload: Vec<u8>) -> Self {
         let id: Vec<u8> = Uuid::new_v4().as_bytes().to_vec();
         Self {
             id,
@@ -314,3 +355,4 @@ impl TryFrom<Vec<u8>> for PpaassMessage {
         })
     }
 }
+
