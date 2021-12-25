@@ -108,6 +108,7 @@ impl Server {
                         match transport_write_lock.as_mut() {
                             Err(e) => {
                                 error!("Fail to acquire write lock on transports, error: {:#?}", e);
+                                continue;
                             }
                             Ok(transports) => {
                                 if snapshot.status == TcpTransportStatus::Closed {
@@ -133,6 +134,7 @@ impl Server {
                     let transports_read_lock = transports.read();
                     match transports_read_lock {
                         Err(e) => {
+                            error!("Fail to acquire transports read lock because of error, error: {:#?}", e);
                             continue;
                         }
                         Ok(lock) => {
