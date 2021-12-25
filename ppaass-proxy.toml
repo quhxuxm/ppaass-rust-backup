@@ -1,0 +1,10 @@
+port = 80
+buffer_size = 1048576
+master_thread_number = 32
+worker_thread_number = 256
+max_blocking_threads = 32
+thread_timeout = 5
+target_connect_timeout = 20
+agent_connection_max_idle = 300
+target_connection_max_idle = 300
+log_config = "log-proxy.yaml"

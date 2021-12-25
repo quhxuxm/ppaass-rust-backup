@@ -41,6 +41,7 @@ impl Decoder for PpaassMessageCodec {
             payload_encryption_type,
             user_token,
             payload: encrypted_payload,
+            ref_id,
             ..
         } = encrypted_ppaass_message.split();
         let original_payload = match payload_encryption_type {
@@ -57,6 +58,7 @@ impl Decoder for PpaassMessageCodec {
             }
         };
         let result = PpaassMessage::new(
+            ref_id,
             user_token,
             rsa_encrypted_payload_encryption_token,
             payload_encryption_type,
@@ -73,6 +75,7 @@ impl Encoder<PpaassMessage> for PpaassMessageCodec {
     fn encode(&mut self, original_message: PpaassMessage, dst: &mut BytesMut) -> Result<(), Self::Error> {
         debug!("Encode ppaass message to output(decrypted): {:?}", original_message);
         let PpaassMessageSplitResult {
+            ref_id,
             user_token,
             payload_encryption_type,
             payload_encryption_token,
@@ -92,7 +95,7 @@ impl Encoder<PpaassMessage> for PpaassMessageCodec {
             }
         };
         let encrypted_message = PpaassMessage::new_with_random_encryption_type(
-            user_token, rsa_encrypted_payload_encryption_token, encrypted_payload);
+            ref_id, user_token, rsa_encrypted_payload_encryption_token, encrypted_payload);
         debug!("Encode ppaass message to output(encrypted): {:?}", encrypted_message);
         let result_bytes: Vec<u8> = encrypted_message.into();
         let lz4_compressed_bytes = compress(result_bytes.as_slice(), None, true)?;
