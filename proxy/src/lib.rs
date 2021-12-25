@@ -1,5 +1,5 @@
-pub mod transport;
-pub mod error;
-pub mod config;
+pub(crate) mod transport;
+pub(crate) mod error;
+pub(crate) mod config;
 pub mod server;
 

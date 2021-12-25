@@ -22,7 +22,7 @@ use crate::error::PpaassProxyError;
 type AgentStreamFramed = Framed<TcpStream, PpaassMessageCodec>;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
-pub enum TcpTransportStatus {
+pub(crate) enum TcpTransportStatus {
     New,
     Initialized,
     Relaying,
@@ -31,7 +31,7 @@ pub enum TcpTransportStatus {
 }
 
 #[derive(Debug)]
-pub struct TcpTransportSnapshot {
+pub(crate) struct TcpTransportSnapshot {
     pub id: String,
     pub status: TcpTransportStatus,
     pub agent_read_bytes: usize,
@@ -47,7 +47,7 @@ pub struct TcpTransportSnapshot {
 }
 
 #[derive(Debug)]
-pub struct TcpTransport {
+pub(crate) struct TcpTransport {
     id: String,
     status: TcpTransportStatus,
     agent_read_bytes: usize,

@@ -2,7 +2,7 @@ use serde_derive::Deserialize;
 use serde_derive::Serialize;
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct ProxyConfiguration {
+pub(crate) struct ProxyConfiguration {
     port: Option<u16>,
     buffer_size: Option<usize>,
     master_thread_number: Option<usize>,
