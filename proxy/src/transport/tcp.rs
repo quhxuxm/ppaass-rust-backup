@@ -316,37 +316,4 @@ impl TcpTransport {
     pub fn id(&self) -> &str {
         &self.id
     }
-    pub fn status(&self) -> TcpTransportStatus {
-        self.status
-    }
-    pub fn agent_read_bytes(&self) -> usize {
-        self.agent_read_bytes
-    }
-    pub fn agent_write_bytes(&self) -> usize {
-        self.agent_write_bytes
-    }
-    pub fn target_read_bytes(&self) -> usize {
-        self.target_read_bytes
-    }
-    pub fn target_write_bytes(&self) -> usize {
-        self.target_write_bytes
-    }
-    pub fn start_time(&self) -> u128 {
-        self.start_time
-    }
-    pub fn end_time(&self) -> Option<u128> {
-        self.end_time
-    }
-    pub fn user_token(&self) -> &Option<Vec<u8>> {
-        &self.user_token
-    }
-    pub fn agent_remote_address(&self) -> SocketAddr {
-        self.agent_remote_address
-    }
-    pub fn source_address(&self) -> &Option<PpaassAddress> {
-        &self.source_address
-    }
-    pub fn target_address(&self) -> &Option<PpaassAddress> {
-        &self.target_address
-    }
 }
