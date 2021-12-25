@@ -1,8 +1,9 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
 use std::ops::Deref;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -11,7 +12,7 @@ use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
 
 use crate::config::ProxyConfiguration;
-use crate::transport::TcpTransport;
+use crate::transport::{TcpTransport, TcpTransportSnapshot};
 
 const CONFIG_FILE_PATH: &str = "ppaass-proxy.toml";
 pub const LOCAL_ADDRESS: [u8; 4] = [0u8; 4];
@@ -21,6 +22,7 @@ pub struct Server {
     worker_runtime: Arc<Runtime>,
     configuration: Arc<ProxyConfiguration>,
 }
+
 
 impl Server {
     pub fn new() -> Result<Self> {
@@ -84,6 +86,14 @@ impl Server {
     pub fn run(&self) -> Result<()> {
         let proxy_server_config = self.configuration.clone();
         let worker_runtime = self.worker_runtime.clone();
+        let (transport_info_sender, mut transport_info_receiver) = tokio::sync::mpsc::channel::<TcpTransportSnapshot>(32);
+        self.master_runtime.spawn(async move {
+            println!("Transport status:");
+            loop {
+                let transport_snapshot = transport_info_receiver.recv().await;
+                println!("{:#?}", transport_snapshot);
+            }
+        });
         self.master_runtime.block_on(async move {
             let local_port = proxy_server_config.port().unwrap();
             let local_ip = IpAddr::from(LOCAL_ADDRESS);
@@ -103,8 +113,10 @@ impl Server {
                 if let Err(e) = agent_stream.set_nodelay(true) {
                     error!("Fail to set no delay on agent stream because of error, agent stream:{:?}, error: {:#?}", agent_stream, e);
                 }
+                let transport_info_sender = transport_info_sender.clone();
                 worker_runtime.spawn(async move {
-                    let tcp_transport = TcpTransport::new(agent_remote_addr);
+                    let tcp_transport = TcpTransport::new(agent_remote_addr,
+                                                          transport_info_sender.clone());
                     if let Err(e) = tcp_transport {
                         error!("Fail to create agent tcp transport because of error, error: {:#?}",e );
                         return;
@@ -129,5 +141,6 @@ impl Server {
 
     pub fn shutdown(self) {
         self.master_runtime.shutdown_timeout(Duration::from_secs(20));
+        info!("Graceful shutdown ppaass server.")
     }
 }

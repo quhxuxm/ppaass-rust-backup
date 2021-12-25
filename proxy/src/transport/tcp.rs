@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
 
@@ -10,6 +11,7 @@ use log::{debug, error};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
+use tokio::sync::mpsc::Sender;
 use tokio_util::codec::{Decoder, Framed};
 use uuid::Uuid;
 
@@ -30,7 +32,8 @@ pub enum TcpTransportStatus {
     Closed,
 }
 
-pub struct TcpTransport {
+#[derive(Debug)]
+pub struct TcpTransportSnapshot {
     id: String,
     status: TcpTransportStatus,
     agent_read_bytes: usize,
@@ -45,8 +48,25 @@ pub struct TcpTransport {
     target_address: Option<PpaassAddress>,
 }
 
+#[derive(Debug)]
+pub struct TcpTransport {
+    id: String,
+    status: TcpTransportStatus,
+    agent_read_bytes: usize,
+    agent_write_bytes: usize,
+    target_read_bytes: usize,
+    target_write_bytes: usize,
+    start_time: u128,
+    end_time: Option<u128>,
+    user_token: Option<Vec<u8>>,
+    agent_remote_address: SocketAddr,
+    source_address: Option<PpaassAddress>,
+    target_address: Option<PpaassAddress>,
+    snapshot_sender: Sender<TcpTransportSnapshot>,
+}
+
 impl TcpTransport {
-    pub fn new(agent_remote_address: SocketAddr) -> Result<Self> {
+    pub fn new(agent_remote_address: SocketAddr, snapshot_sender: Sender<TcpTransportSnapshot>) -> Result<Self> {
         let id = Uuid::new_v4().to_string();
         Ok(Self {
             id,
@@ -63,6 +83,7 @@ impl TcpTransport {
             agent_remote_address,
             source_address: None,
             target_address: None,
+            snapshot_sender,
         })
     }
 
@@ -74,6 +95,8 @@ impl TcpTransport {
     /// * Closing status: A transport is closing.
     /// * Closed status: A transport is closed.
     pub async fn start(&mut self, agent_stream: TcpStream) -> Result<()> {
+        let transport_snapshot = self.take_snapshot();
+        self.snapshot_sender.send(transport_snapshot).await?;
         let ppaass_message_codec = PpaassMessageCodec::new("".to_string(), "".to_string());
         let agent_stream_framed = ppaass_message_codec.framed(agent_stream);
         // Initialize the target edge stream
@@ -147,6 +170,8 @@ impl TcpTransport {
                 self.source_address = Some(agent_message_body.source_address().clone());
                 self.target_address = Some(agent_message_body.target_address().clone());
                 self.status = TcpTransportStatus::Initialized;
+                let transport_snapshot = self.take_snapshot();
+                self.snapshot_sender.send(transport_snapshot).await?;
             }
             status => {
                 return Err(PpaassProxyError::ReceiveInvalidAgentMessage(
@@ -163,6 +188,8 @@ impl TcpTransport {
             return Err(PpaassProxyError::InvalidTcpTransportStatus(self.id.clone(), TcpTransportStatus::Initialized, self.status).into());
         }
         self.status = TcpTransportStatus::Relaying;
+        let transport_snapshot = self.take_snapshot();
+        self.snapshot_sender.send(transport_snapshot).await?;
         let user_token = self.user_token.clone().take().context("Can not unwrap user token.")?;
         let user_token_for_target_to_proxy_relay = user_token.clone();
         let source_address = self.source_address.clone().take().context("Can not unwrap source edge address")?;
@@ -256,6 +283,8 @@ impl TcpTransport {
         let (agent_to_proxy_read_bytes, proxy_to_target_write_bytes) = from_proxy_to_target_relay.await?;
         self.agent_read_bytes += agent_to_proxy_read_bytes;
         self.target_write_bytes += proxy_to_target_write_bytes;
+        let transport_snapshot = self.take_snapshot();
+        self.snapshot_sender.send(transport_snapshot).await?;
         Ok(())
     }
 
@@ -265,7 +294,26 @@ impl TcpTransport {
             Some(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?.as_millis())
         };
         self.status = TcpTransportStatus::Closed;
+        let transport_snapshot = self.take_snapshot();
+        self.snapshot_sender.send(transport_snapshot).await?;
         Ok(())
+    }
+
+    pub fn take_snapshot(&self) -> TcpTransportSnapshot {
+        TcpTransportSnapshot {
+            id: self.id.clone(),
+            user_token: self.user_token.clone(),
+            status: self.status,
+            agent_remote_address: self.agent_remote_address.clone(),
+            source_address: self.source_address.clone(),
+            target_address: self.target_address.clone(),
+            agent_read_bytes: self.agent_read_bytes,
+            agent_write_bytes: self.agent_write_bytes,
+            target_read_bytes: self.target_read_bytes,
+            target_write_bytes: self.target_write_bytes,
+            start_time: self.start_time,
+            end_time: self.end_time,
+        }
     }
     pub fn id(&self) -> &str {
         &self.id
