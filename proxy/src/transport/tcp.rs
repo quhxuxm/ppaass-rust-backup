@@ -1,6 +1,4 @@
 use std::net::SocketAddr;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
 
 use anyhow::Context;
@@ -34,18 +32,18 @@ pub enum TcpTransportStatus {
 
 #[derive(Debug)]
 pub struct TcpTransportSnapshot {
-    id: String,
-    status: TcpTransportStatus,
-    agent_read_bytes: usize,
-    agent_write_bytes: usize,
-    target_read_bytes: usize,
-    target_write_bytes: usize,
-    start_time: u128,
-    end_time: Option<u128>,
-    user_token: Option<Vec<u8>>,
-    agent_remote_address: SocketAddr,
-    source_address: Option<PpaassAddress>,
-    target_address: Option<PpaassAddress>,
+    pub id: String,
+    pub status: TcpTransportStatus,
+    pub agent_read_bytes: usize,
+    pub agent_write_bytes: usize,
+    pub target_read_bytes: usize,
+    pub target_write_bytes: usize,
+    pub start_time: u128,
+    pub end_time: Option<u128>,
+    pub user_token: Option<Vec<u8>>,
+    pub agent_remote_address: SocketAddr,
+    pub source_address: Option<PpaassAddress>,
+    pub target_address: Option<PpaassAddress>,
 }
 
 #[derive(Debug)]
