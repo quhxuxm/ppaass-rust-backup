@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -14,6 +15,10 @@ use crate::transport::{TcpTransport, TcpTransportSnapshot};
 
 const CONFIG_FILE_PATH: &str = "ppaass-proxy.toml";
 pub const LOCAL_ADDRESS: [u8; 4] = [0u8; 4];
+
+const AGENT_PUBLIC_KEY_PATH: &str = "AgentPublicKey.pem";
+const PROXY_PRIVATE_KEY_PATH: &str = "ProxyPrivateKey.pem";
+
 
 pub struct Server {
     master_runtime: Runtime,
@@ -82,6 +87,8 @@ impl Server {
     }
 
     pub fn run(&self) -> Result<()> {
+        let agent_public_key = std::fs::read_to_string(Path::new(AGENT_PUBLIC_KEY_PATH)).expect("Fail to read agent public key.");
+        let proxy_private_key = std::fs::read_to_string(Path::new(PROXY_PRIVATE_KEY_PATH)).expect("Fail to read agent public key.");
         let proxy_server_config = self.configuration.clone();
         let worker_runtime = self.worker_runtime.clone();
         let (transport_info_sender, mut transport_info_receiver) = tokio::sync::mpsc::channel::<TcpTransportSnapshot>(32);
@@ -101,6 +108,7 @@ impl Server {
                 .unwrap_or_else(|e| panic!("Fail to start proxy because of error, error: {:#?}", e));
             //Start to processing client protocol
             info!("Success to bind TCP server on port: [{}]", local_port);
+
             loop {
                 let agent_connection_accept_result = tcp_listener.accept().await;
                 if let Err(e) = agent_connection_accept_result {
@@ -112,6 +120,8 @@ impl Server {
                     error!("Fail to set no delay on agent stream because of error, agent stream:{:?}, error: {:#?}", agent_stream, e);
                 }
                 let transport_info_sender = transport_info_sender.clone();
+                let agent_public_key = agent_public_key.clone();
+                let proxy_private_key = proxy_private_key.clone();
                 worker_runtime.spawn(async move {
                     let tcp_transport = TcpTransport::new(agent_remote_addr,
                                                           transport_info_sender.clone());
@@ -122,7 +132,7 @@ impl Server {
                     let mut tcp_transport = tcp_transport.unwrap();
                     let tcp_transport_id = tcp_transport.id().to_string();
                     info!("Receive a agent stream from: [{}], assign it to transport: [{}].", agent_remote_addr, tcp_transport_id);
-                    if let Err(e) = tcp_transport.start(agent_stream).await {
+                    if let Err(e) = tcp_transport.start(agent_stream, agent_public_key, proxy_private_key).await {
                         error!("Fail to start agent tcp transport because of error, transport:[{}], agent address:[{}], error: {:#?}",tcp_transport_id,
                             agent_remote_addr,e);
                     }

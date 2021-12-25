@@ -92,10 +92,10 @@ impl TcpTransport {
     /// * Relaying status: A transport start to relay data.
     /// * Closing status: A transport is closing.
     /// * Closed status: A transport is closed.
-    pub async fn start(&mut self, agent_stream: TcpStream) -> Result<()> {
+    pub async fn start(&mut self, agent_stream: TcpStream, rsa_public_key: impl Into<String>, rsa_private_key: impl Into<String>) -> Result<()> {
         let transport_snapshot = self.take_snapshot();
         self.snapshot_sender.send(transport_snapshot).await?;
-        let ppaass_message_codec = PpaassMessageCodec::new("".to_string(), "".to_string());
+        let ppaass_message_codec = PpaassMessageCodec::new(rsa_public_key.into(), rsa_private_key.into());
         let agent_stream_framed = ppaass_message_codec.framed(agent_stream);
         // Initialize the target edge stream
         let init_result = self.init(agent_stream_framed).await?;
