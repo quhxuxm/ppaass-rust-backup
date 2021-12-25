@@ -26,7 +26,6 @@ pub(crate) enum TcpTransportStatus {
     New,
     Initialized,
     Relaying,
-    Closing,
     Closed,
 }
 
@@ -287,7 +286,6 @@ impl TcpTransport {
     }
 
     pub async fn close(mut self) -> Result<()> {
-        self.status = TcpTransportStatus::Closing;
         self.end_time = {
             Some(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?.as_millis())
         };
@@ -317,3 +315,4 @@ impl TcpTransport {
         &self.id
     }
 }
+

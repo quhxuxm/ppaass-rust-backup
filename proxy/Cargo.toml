@@ -19,4 +19,4 @@ log = "0.4.14"
 serde="1.0.132"
 serde_derive="1.0.132"
 toml="0.5.8"
-log4rs="1.0.0"
+log4rs= { version="1.0.0", features=["gzip"] }
