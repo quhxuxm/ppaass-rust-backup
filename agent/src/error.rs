@@ -4,4 +4,8 @@ pub(crate) enum PpaassAgentError {
     ConnectToProxyFail(#[from] std::io::Error),
     #[error("Fail to codec http protocol")]
     HttpCodecError(#[from] bytecodec::Error),
+    #[error("Fail to parse socks 5 connect request type: {0}")]
+    FailToParseSocks5ConnectRequestType(u8),
+    #[error("Fail to parse socks 5 address type: {0}")]
+    FailToParseSocks5AddrType(u8),
 }
