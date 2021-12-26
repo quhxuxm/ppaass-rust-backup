@@ -6,12 +6,8 @@ use tokio_util::codec::{Decoder, Encoder};
 
 use crate::error::PpaassAgentError;
 use crate::protocol::socks::{Socks5AddrType, Socks5AuthMethod, Socks5AuthRequest, Socks5AuthResponse, Socks5ConnectRequest, Socks5ConnectRequestType, Socks5ConnectResponse};
-use crate::protocol::socks::message::{
-    Socks5AddrType, Socks5AuthMethod, Socks5AuthRequest, Socks5AuthResponse, Socks5ConnectRequest,
-    Socks5ConnectRequestType, Socks5ConnectResponse,
-};
 
-pub struct Socks5AuthCodec {}
+pub(crate) struct Socks5AuthCodec {}
 
 impl Default for Socks5AuthCodec {
     fn default() -> Self {
@@ -29,17 +25,11 @@ impl Decoder for Socks5AuthCodec {
         }
         let version = src[0];
         if version != 5 {
-            return Err(Error::new(
-                ErrorKind::InvalidData,
-                "Fail to decode socks 5 authenticate command as the version is not 5.",
-            ));
+            return Err(PpaassAgentError::FailToDecodeSocks5Protocol);
         }
         let methods_number = src[1];
         if methods_number as usize <= 0 {
-            return Err(Error::new(
-                ErrorKind::InvalidData,
-                "Fail to decode socks 5 authenticate command as the methods number is invalid.",
-            ));
+            return Err(PpaassAgentError::FailToDecodeSocks5Protocol);
         }
         if src.len() < (2 + methods_number) as usize {
             return Ok(None);
@@ -63,7 +53,7 @@ impl Encoder<Socks5AuthResponse> for Socks5AuthCodec {
     }
 }
 
-pub struct Socks5ConnectCodec {}
+pub(crate) struct Socks5ConnectCodec {}
 
 impl Default for Socks5ConnectCodec {
     fn default() -> Self {
@@ -81,10 +71,7 @@ impl Decoder for Socks5ConnectCodec {
         }
         let version = src[0];
         if version != 5 {
-            return Err(anyhow!(
-                "Can not decode incoming socks command because of the version is not 5"
-            )
-                .into());
+            return Err(PpaassAgentError::FailToDecodeSocks5Protocol);
         }
         let request_type: Socks5ConnectRequestType = src[1].try_into()?;
         let addr_type: Socks5AddrType = src[3].try_into()?;
@@ -135,9 +122,7 @@ impl Decoder for Socks5ConnectCodec {
         let port_bytes: [u8; 2] = [src[4 + host_bytes_number], src[4 + host_bytes_number + 1]];
         let port = u16::from_be_bytes(port_bytes);
         if port as usize <= 0 {
-            return Err(
-                anyhow!("Fail to decode socks 5 connect command as port is invalid.",).into(),
-            );
+            return Err(PpaassAgentError::FailToDecodeSocks5Protocol);
         }
         Ok(Some(Socks5ConnectRequest::new(
             request_type,

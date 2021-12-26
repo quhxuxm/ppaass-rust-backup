@@ -1,6 +1,5 @@
 use std::fmt::{Debug, Display, Formatter};
 
-use anyhow::anyhow;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 use crate::error::PpaassAgentError;

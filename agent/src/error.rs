@@ -8,4 +8,6 @@ pub(crate) enum PpaassAgentError {
     FailToParseSocks5ConnectRequestType(u8),
     #[error("Fail to parse socks 5 address type: {0}")]
     FailToParseSocks5AddrType(u8),
+    #[error("Fail to decode socks5 protocol")]
+    FailToDecodeSocks5Protocol
 }
