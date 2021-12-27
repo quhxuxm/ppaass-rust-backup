@@ -1,5 +1,3 @@
-use std::ptr::replace;
-
 use uuid::Uuid;
 
 pub mod agent;
