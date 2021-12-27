@@ -1,3 +1,5 @@
+use crate::error::PpaassAgentError;
+
 pub(crate) struct ProxyAddress {
     host: String,
     port: u16,

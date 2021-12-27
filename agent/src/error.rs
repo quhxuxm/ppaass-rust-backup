@@ -16,7 +16,7 @@ pub(crate) enum PpaassAgentError {
     FailToParseSocks5AddrType(u8),
     #[error("Fail to decode socks5 protocol")]
     FailToDecodeSocks5Protocol,
-    #[error("Invalid transport status, transport: [{}], require: {}, given: {}")]
+    #[error("Invalid transport status, transport: [{0}], require: {1:?}, given: {2:?}")]
     InvalidTransportStatus(String, TransportStatus, TransportStatus),
     #[error("Io error happen")]
     IoError(#[from] std::io::Error),

@@ -10,7 +10,7 @@ use bytes::BufMut;
 use futures_util::{SinkExt, StreamExt};
 use httpcodec::{BodyEncoder, HttpVersion, ReasonPhrase, RequestEncoder, Response, StatusCode};
 use log::{error, info};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 use tokio_util::codec::{Decoder, Framed};
@@ -317,6 +317,7 @@ impl HttpTransport {
             mut client_tcp_stream,
             ..
         } = init_result;
+        let (mut proxy_framed_write, mut proxy_framed_read) = proxy_framed.split();
         self.status = TransportStatus::Relaying;
         let user_token = self.user_token.clone();
         if let Some(message) = http_init_message {
@@ -334,28 +335,29 @@ impl HttpTransport {
                 PpaassMessagePayloadEncryptionType::random(),
                 init_data_message_body.into(),
             );
-            proxy_framed.send(init_data_message).await?;
-            proxy_framed.flush().await?;
+            proxy_framed_write.send(init_data_message).await?;
+            proxy_framed_write.flush().await?;
             self.client_read_bytes += message_size;
         }
+        let (mut client_tcp_stream_read, mut client_tcp_stream_write) = client_tcp_stream.into_split();
         let client_to_proxy_relay = tokio::spawn(async move {
             let mut client_read_bytes = 0;
             let mut proxy_write_bytes = 0;
             loop {
                 let mut read_buf = Vec::<u8>::with_capacity(1024 * 64);
-                match client_tcp_stream.read_buf(&mut read_buf).await {
+                match client_tcp_stream_read.read_buf(&mut read_buf).await {
                     Err(e) => {
                         error!("Fail to read data from agent client because of error, error: {:#?}", e);
-                        break;
+                        return (client_read_bytes, proxy_write_bytes);
                     }
                     Ok(data_size) => {
                         if data_size == 0 && read_buf.remaining_mut() > 0 {
-                            return  (client_read_bytes, proxy_write_bytes);
+                            return (client_read_bytes, proxy_write_bytes);
                         }
                         client_read_bytes += data_size;
                     }
                 }
-                let read_buf_size=read_buf.len();
+                let read_buf_size = read_buf.len();
                 let data_message_body = PpaassAgentMessagePayload::new(
                     source_address.clone(),
                     target_address.clone(),
@@ -369,24 +371,80 @@ impl HttpTransport {
                     PpaassMessagePayloadEncryptionType::random(),
                     data_message_body.into(),
                 );
-                if let Err(e) = proxy_framed.send(data_message).await {
+                if let Err(e) = proxy_framed_write.send(data_message).await {
                     error!("Fail to send data from agent to proxy because of error, error: {:#?}", e);
                     break;
                 }
-                if let Err(e) = proxy_framed.flush().await {
+                if let Err(e) = proxy_framed_write.flush().await {
                     error!("Fail to flush data from agent to proxy because of error, error: {:#?}", e);
                     break;
                 }
-                proxy_write_bytes+=read_buf_size;
+                proxy_write_bytes += read_buf_size;
             }
             (client_read_bytes, proxy_write_bytes)
         });
         let proxy_to_client_relay = tokio::spawn(async move {
-
+            let mut client_write_bytes = 0;
+            let mut proxy_read_bytes = 0;
+            loop {
+                let proxy_message = proxy_framed_read.next().await;
+                match proxy_message {
+                    None => return (proxy_read_bytes, client_write_bytes),
+                    Some(proxy_message) => {
+                        match proxy_message {
+                            Err(e) => {
+                                error!("Fail to read data from proxy because of error, error: {:#?}", e);
+                                return (proxy_read_bytes, client_write_bytes);
+                            }
+                            Ok(proxy_message) => {
+                                let PpaassMessageSplitResult {
+                                    payload,
+                                    ..
+                                } = proxy_message.split();
+                                let payload: Result<PpaassProxyMessagePayload, _> = payload.try_into();
+                                match payload {
+                                    Err(e) => {
+                                        error!("Fail to read data from proxy because of error, error: {:#?}", e);
+                                        return (proxy_read_bytes, client_write_bytes);
+                                    }
+                                    Ok(payload) => {
+                                        match payload.payload_type() {
+                                            PpaassProxyMessagePayloadType::TcpDataRelayFail => {
+                                                error!("Fail to read data from proxy because of proxy give data relay fail");
+                                                return (proxy_read_bytes, client_write_bytes);
+                                            }
+                                            PpaassProxyMessagePayloadType::TcpData => {
+                                                proxy_read_bytes += payload.data().len();
+                                                if let Err(e) = client_tcp_stream_write.write(payload.data()).await {
+                                                    error!("Fail to send data from agent to client because of error, error: {:#?}", e);
+                                                    return (proxy_read_bytes, client_write_bytes);
+                                                }
+                                                if let Err(e) = client_tcp_stream_write.flush().await {
+                                                    error!("Fail to flush data from agent to client because of error, error: {:#?}", e);
+                                                    return (proxy_read_bytes, client_write_bytes);
+                                                }
+                                                client_write_bytes += payload.data().len();
+                                            }
+                                            t => {
+                                                error!("Fail to read data from proxy because of proxy give invalid type: {:?}", t);
+                                                return (proxy_read_bytes, client_write_bytes);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         });
-        let  (client_read_bytes, proxy_write_bytes)= client_to_proxy_relay.await?;
-        proxy_to_client_relay.await;
-        todo!()
+        let (client_read_bytes, proxy_write_bytes) = client_to_proxy_relay.await?;
+        self.client_read_bytes += client_read_bytes;
+        self.proxy_write_bytes += proxy_write_bytes;
+        let (proxy_read_bytes, client_write_bytes) = proxy_to_client_relay.await?;
+        self.proxy_read_bytes += proxy_read_bytes;
+        self.client_write_bytes += client_write_bytes;
+        Ok(())
     }
 
     async fn close(&mut self) -> Result<()> {
