@@ -34,7 +34,10 @@ const CONNECT_METHOD: &str = "connect";
 const HTTPS_DEFAULT_PORT: u16 = 443;
 const HTTP_DEFAULT_PORT: u16 = 80;
 const OK_CODE: u16 = 200;
+const ERROR_CODE: u16 = 400;
+const ERROR_REASON: &str = " ";
 const CONNECTION_ESTABLISHED: &str = "Connection Established";
+
 pub(crate) struct HttpTransport {
     id: String,
     status: TransportStatus,
@@ -97,6 +100,22 @@ impl HttpTransport {
             configuration,
         })
     }
+
+    async fn send_error_to_client(
+        mut client_http_framed: HttpFramed) -> Result<()> {
+        let bad_request_status_code = StatusCode::new(ERROR_CODE).unwrap();
+        let error_response_reason = ReasonPhrase::new(ERROR_REASON).unwrap();
+        let connect_error_response = Response::new(
+            HttpVersion::V1_1,
+            bad_request_status_code,
+            error_response_reason,
+            vec![],
+        );
+        client_http_framed.send(connect_error_response).await?;
+        client_http_framed.flush().await?;
+        Ok(())
+    }
+
     async fn init(&mut self, client_tcp_stream: TcpStream, rsa_public_key: String,
         rsa_private_key: String) -> Result<(HttpFramed, Option<PpaassMessageFramed>, Option<Vec<u8>>)> {
         let client_address = client_tcp_stream.peer_addr()?;
@@ -110,7 +129,8 @@ impl HttpTransport {
             Some(message) => {
                 match message {
                     Err(e) => {
-                        return Ok((client_stream_framed, None, None));
+                        Self::send_error_to_client(client_stream_framed).await?;
+                        return Err(e.into());
                     }
                     Ok(http_request) => {
                         let request_target = http_request.request_target().to_string();
@@ -137,11 +157,10 @@ impl HttpTransport {
                         };
                         let target_host = match parsed_request_url.host() {
                             None => {
+                                Self::send_error_to_client(client_stream_framed).await?;
                                 return Err(PpaassAgentError::FailToParseTargetHostFromHttpRequest.into());
                             }
-                            Some(h) => {
-                                h.to_string()
-                            }
+                            Some(h) =>  h.to_string()
                         };
                         let proxy_addresses = self.configuration.proxy_addresses().clone().context("Proxy address did not configure properly")?;
                         let mut proxy_addresses_iter = proxy_addresses.iter();
@@ -174,6 +193,7 @@ impl HttpTransport {
                         match proxy_stream {
                             None => {
                                 error!("None of the proxy address is connectable");
+                                Self::send_error_to_client(client_stream_framed).await?;
                                 return Err(PpaassAgentError::ConnectToProxyFail.into());
                             }
                             Some(proxy_stream) => {
@@ -217,6 +237,7 @@ impl HttpTransport {
                 Some(response) => {
                     match response {
                         Err(e) => {
+                            Self::send_error_to_client(client_stream_framed).await?;
                             return Err(PpaassAgentError::ConnectToProxyFail.into());
                         }
                         Ok(r) => {
@@ -245,6 +266,7 @@ impl HttpTransport {
                 Ok((client_stream_framed, Some(proxy_framed), http_init_message))
             }
             _status => {
+                Self::send_error_to_client(client_stream_framed).await?;
                 Err(PpaassAgentError::ConnectToProxyFail.into())
             }
         };
