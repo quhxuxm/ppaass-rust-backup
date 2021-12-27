@@ -194,7 +194,7 @@ impl TcpTransport {
         let target_address_for_target_to_proxy_relay = target_address.clone();
         let (mut target_read, mut target_write) = target_stream.into_split();
         let (mut agent_write_part, mut agent_read_part) = agent_edge_framed.split();
-        let from_proxy_to_target_relay = tokio::spawn(async move {
+        let proxy_to_target_relay = tokio::spawn(async move {
             let mut proxy_to_target_write_bytes = 0usize;
             let mut agent_to_proxy_read_bytes = 0usize;
             loop {
@@ -235,7 +235,7 @@ impl TcpTransport {
                 }
             }
         });
-        let from_target_to_proxy_relay = tokio::spawn(async move {
+        let target_to_proxy_relay = tokio::spawn(async move {
             let mut target_to_proxy_read_bytes = 0usize;
             let mut proxy_to_agent_write_bytes = 0usize;
             loop {
@@ -273,10 +273,10 @@ impl TcpTransport {
                 proxy_to_agent_write_bytes += read_size;
             };
         });
-        let (target_to_proxy_read_bytes, proxy_to_agent_write_bytes) = from_target_to_proxy_relay.await?;
+        let (target_to_proxy_read_bytes, proxy_to_agent_write_bytes) = target_to_proxy_relay.await?;
         self.target_read_bytes += target_to_proxy_read_bytes;
         self.agent_write_bytes += proxy_to_agent_write_bytes;
-        let (agent_to_proxy_read_bytes, proxy_to_target_write_bytes) = from_proxy_to_target_relay.await?;
+        let (agent_to_proxy_read_bytes, proxy_to_target_write_bytes) = proxy_to_target_relay.await?;
         self.agent_read_bytes += agent_to_proxy_read_bytes;
         self.target_write_bytes += proxy_to_target_write_bytes;
         let transport_snapshot = self.take_snapshot();

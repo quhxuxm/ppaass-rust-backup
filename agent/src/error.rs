@@ -1,3 +1,5 @@
+use crate::transport::common::TransportStatus;
+
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum PpaassAgentError {
     #[error("Connect to target fail")]
@@ -14,7 +16,8 @@ pub(crate) enum PpaassAgentError {
     FailToParseSocks5AddrType(u8),
     #[error("Fail to decode socks5 protocol")]
     FailToDecodeSocks5Protocol,
-
+    #[error("Invalid transport status, transport: [{}], require: {}, given: {}")]
+    InvalidTransportStatus(String, TransportStatus, TransportStatus),
     #[error("Io error happen")]
     IoError(#[from] std::io::Error),
 }
