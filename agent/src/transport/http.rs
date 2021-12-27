@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use bytecodec::bytes::BytesEncoder;
 use bytecodec::EncodeExt;
 use futures_util::{SinkExt, StreamExt};
-use httpcodec::{BodyEncoder, RequestEncoder};
+use httpcodec::{BodyEncoder, HttpVersion, ReasonPhrase, RequestEncoder, Response, StatusCode};
 use log::{error, info};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
@@ -33,7 +33,8 @@ const SCHEMA_SEP: &str = "://";
 const CONNECT_METHOD: &str = "connect";
 const HTTPS_DEFAULT_PORT: u16 = 443;
 const HTTP_DEFAULT_PORT: u16 = 80;
-
+const OK_CODE: u16 = 200;
+const CONNECTION_ESTABLISHED: &str = "Connection Established";
 pub(crate) struct HttpTransport {
     id: String,
     status: TransportStatus,
@@ -232,6 +233,14 @@ impl HttpTransport {
         let message_payload: PpaassProxyMessagePayload = payload.try_into()?;
         return match message_payload.payload_type() {
             PpaassProxyMessagePayloadType::TcpConnectSuccess => {
+                let http_connect_success_response = Response::new(
+                    HttpVersion::V1_1,
+                    StatusCode::new(OK_CODE).unwrap(),
+                    ReasonPhrase::new(CONNECTION_ESTABLISHED).unwrap(),
+                    vec![],
+                );
+                client_stream_framed.send(http_connect_success_response).await?;
+                client_stream_framed.flush().await?;
                 self.status = TransportStatus::Connected;
                 Ok((client_stream_framed, Some(proxy_framed), http_init_message))
             }
