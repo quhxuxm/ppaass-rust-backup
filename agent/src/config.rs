@@ -8,8 +8,8 @@ pub struct AgentConfiguration {
     proxy_addresses: Option<Vec<String>>,
     proxy_port: Option<u16>,
     buffer_size: Option<usize>,
-    init_thread_number: Option<usize>,
-    relay_thread_number: Option<usize>,
+    master_thread_number: Option<usize>,
+    worker_thread_number: Option<usize>,
     max_blocking_threads: Option<usize>,
     thread_timeout: Option<u64>,
     proxy_connect_timeout: Option<u64>,
@@ -39,11 +39,11 @@ impl AgentConfiguration {
         self.buffer_size
     }
 
-    pub fn init_thread_number(&self) -> Option<usize> {
-        self.init_thread_number
+    pub fn master_thread_number(&self) -> Option<usize> {
+        self.master_thread_number
     }
-    pub fn relay_thread_number(&self) -> Option<usize> {
-        self.relay_thread_number
+    pub fn worker_thread_number(&self) -> Option<usize> {
+        self.worker_thread_number
     }
 
     pub fn max_blocking_threads(&self) -> Option<usize> {
