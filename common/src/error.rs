@@ -10,6 +10,8 @@ pub enum PpaassCommonError {
     FailToParsePpaassDomainAddress,
     #[error("Fail to parse ppaass address type: {0}")]
     FailToParsePpaassAddressType(u8),
+    #[error("Fail to parse ppaass address from string: {0}")]
+    FailToParsePpaassAddressFromString(String),
     #[error("Fail to parse ppaass message payload encryption type: {0}")]
     FailToParsePpaassMessagePayloadEncryptionType(u8),
     #[error("Fail to parse ppaass agent message payload type: {0}")]

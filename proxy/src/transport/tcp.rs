@@ -11,11 +11,11 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 use tokio_util::codec::{Decoder, Framed};
-use uuid::Uuid;
 
 use ppaass_common::agent::{PpaassAgentMessagePayload, PpaassAgentMessagePayloadType};
 use ppaass_common::codec::PpaassMessageCodec;
 use ppaass_common::common::{PpaassAddress, PpaassMessage, PpaassMessageSplitResult, PpaassProxyMessagePayload, PpaassProxyMessagePayloadType};
+use ppaass_common::generate_uuid;
 
 use crate::error::PpaassProxyError;
 
@@ -64,9 +64,8 @@ pub(crate) struct TcpTransport {
 
 impl TcpTransport {
     pub fn new(agent_remote_address: SocketAddr, snapshot_sender: Sender<TcpTransportSnapshot>) -> Result<Self> {
-        let id = Uuid::new_v4().to_string();
         Ok(Self {
-            id,
+            id: generate_uuid(),
             status: TcpTransportStatus::New,
             agent_read_bytes: 0,
             agent_write_bytes: 0,
@@ -141,7 +140,7 @@ impl TcpTransport {
                     let tcp_connect_fail_message = PpaassMessage::new_with_random_encryption_type(
                         agent_message_id_bytes.clone(),
                         user_token.clone(),
-                        Uuid::new_v4().as_bytes().to_vec(),
+                        generate_uuid().as_bytes().to_vec(),
                         tcp_connect_fail_message_payload.into(),
                     );
                     agent_stream_framed.send(tcp_connect_fail_message).await?;
@@ -158,7 +157,7 @@ impl TcpTransport {
                 let tcp_connect_success_message = PpaassMessage::new_with_random_encryption_type(
                     agent_message_id_bytes.clone(),
                     user_token.clone(),
-                    Uuid::new_v4().as_bytes().to_vec(),
+                    generate_uuid().as_bytes().to_vec(),
                     tcp_connect_success_message_payload.into(),
                 );
                 agent_stream_framed.send(tcp_connect_success_message).await?;
@@ -260,7 +259,7 @@ impl TcpTransport {
                 let tcp_data_success_message = PpaassMessage::new_with_random_encryption_type(
                     vec![],
                     user_token_for_target_to_proxy_relay.clone(),
-                    Uuid::new_v4().as_bytes().to_vec(),
+                    generate_uuid().as_bytes().to_vec(),
                     tcp_data_success_message_payload.into(),
                 );
                 if let Err(e) = agent_write_part.send(tcp_data_success_message).await {

@@ -1,0 +1,13 @@
+port = 10080
+user_token = "ppaass-rust"
+proxy_addresses = ["8.214.90.87:80", "8.214.90.87:80"]
+#proxy_host = "127.0.0.1"
+buffer_size = 1048576
+init_thread_number = 32
+relay_thread_number = 128
+max_blocking_threads = 32
+thread_timeout = 5
+proxy_connect_timeout = 20
+client_connection_max_idle = 300
+proxy_connection_max_idle = 300
+log_config = "log-agent.yaml"

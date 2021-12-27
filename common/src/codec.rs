@@ -52,7 +52,7 @@ impl Decoder for PpaassMessageCodec {
                 let original_encryption_token = self.rsa_crypto.decrypt(rsa_encrypted_payload_encryption_token.as_slice())?;
                 decrypt_with_blowfish(original_encryption_token.as_slice(), encrypted_payload.as_slice())
             }
-            PpaassMessagePayloadEncryptionType::AES => {
+            PpaassMessagePayloadEncryptionType::Aes => {
                 let original_encryption_token = self.rsa_crypto.decrypt(rsa_encrypted_payload_encryption_token.as_slice())?;
                 decrypt_with_aes(original_encryption_token.as_slice(), encrypted_payload.as_slice())
             }
@@ -90,7 +90,7 @@ impl Encoder<PpaassMessage> for PpaassMessageCodec {
             PpaassMessagePayloadEncryptionType::Blowfish => {
                 encrypt_with_blowfish(payload_encryption_token.as_slice(), payload.as_slice())
             }
-            PpaassMessagePayloadEncryptionType::AES => {
+            PpaassMessagePayloadEncryptionType::Aes => {
                 encrypt_with_aes(payload_encryption_token.as_slice(), payload.as_slice())
             }
         };

@@ -5,7 +5,7 @@ use serde_derive::Serialize;
 pub struct AgentConfiguration {
     port: Option<u16>,
     user_token: Option<String>,
-    proxy_host: Option<String>,
+    proxy_addresses: Option<Vec<String>>,
     proxy_port: Option<u16>,
     buffer_size: Option<usize>,
     init_thread_number: Option<usize>,
@@ -27,8 +27,8 @@ impl AgentConfiguration {
         &self.user_token
     }
 
-    pub fn proxy_host(&self) -> &Option<String> {
-        &self.proxy_host
+    pub fn proxy_addresses(&self) -> &Option<Vec<String>> {
+        &self.proxy_addresses
     }
 
     pub fn proxy_port(&self) -> Option<u16> {
