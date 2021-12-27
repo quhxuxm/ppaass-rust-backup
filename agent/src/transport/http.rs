@@ -1,10 +1,13 @@
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use bytecodec::bytes::BytesEncoder;
+use bytecodec::EncodeExt;
 use futures_util::{SinkExt, StreamExt};
+use httpcodec::{BodyEncoder, RequestEncoder};
 use log::{error, info};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
@@ -13,8 +16,9 @@ use url::Url;
 
 use ppaass_common::agent::{PpaassAgentMessagePayload, PpaassAgentMessagePayloadType};
 use ppaass_common::codec::PpaassMessageCodec;
-use ppaass_common::common::{PpaassAddress, PpaassAddressType, PpaassMessage, PpaassMessagePayloadEncryptionType};
+use ppaass_common::common::{PpaassAddress, PpaassAddressType, PpaassMessage, PpaassMessagePayloadEncryptionType, PpaassMessageSplitResult};
 use ppaass_common::generate_uuid;
+use ppaass_common::proxy::{PpaassProxyMessagePayload, PpaassProxyMessagePayloadType};
 
 use crate::codec::http::HttpCodec;
 use crate::config::AgentConfiguration;
@@ -26,6 +30,7 @@ type PpaassMessageFramed = Framed<TcpStream, PpaassMessageCodec>;
 
 const HTTPS_SCHEMA: &str = "https";
 const SCHEMA_SEP: &str = "://";
+const CONNECT_METHOD: &str = "connect";
 const HTTPS_DEFAULT_PORT: u16 = 443;
 const HTTP_DEFAULT_PORT: u16 = 80;
 
@@ -59,7 +64,7 @@ impl Transport for HttpTransport {
             Ok(result) => result
         };
         let proxy_framed = proxy_framed.context("Can not unwrap proxy framed from init result")?;
-        self.relay(client_stream_framed, proxy_framed).await?;
+        self.relay(client_stream_framed, proxy_framed, init_message).await?;
         self.close().await?;
         Ok(())
     }
@@ -97,7 +102,7 @@ impl HttpTransport {
         let http_codec = HttpCodec::default();
         let mut client_stream_framed = http_codec.framed(client_tcp_stream);
         let http_message = client_stream_framed.next().await;
-        let (proxy_stream, target_host, target_port) = match http_message {
+        let (proxy_stream, target_host, target_port, http_init_message) = match http_message {
             None => {
                 return Ok((client_stream_framed, None, None));
             }
@@ -107,14 +112,16 @@ impl HttpTransport {
                         return Ok((client_stream_framed, None, None));
                     }
                     Ok(http_request) => {
-                        let request_target = http_request.request_target();
+                        let request_target = http_request.request_target().to_string();
                         let request_method = http_request.method();
-                        let request_url = match request_method.as_str().to_lowercase().as_str() {
-                            "connect" => {
-                                format!("{}{}{}", HTTPS_SCHEMA, SCHEMA_SEP, request_target.as_str())
+                        let (request_url, http_data) = match request_method.as_str().to_lowercase().as_str() {
+                            CONNECT_METHOD => {
+                                (format!("{}{}{}", HTTPS_SCHEMA, SCHEMA_SEP, request_target), None)
                             }
                             _ => {
-                                request_target.as_str().to_string()
+                                let mut http_data_encoder = RequestEncoder::<BodyEncoder<BytesEncoder>>::default();
+                                let encode_result = http_data_encoder.encode_into_bytes(http_request);
+                                (request_target, Some(encode_result?))
                             }
                         };
                         let parsed_request_url = Url::parse(request_url.as_str())?;
@@ -168,7 +175,12 @@ impl HttpTransport {
                                 error!("None of the proxy address is connectable");
                                 return Err(PpaassAgentError::ConnectToProxyFail.into());
                             }
-                            Some(proxy_stream) => (proxy_stream, target_host, target_port)
+                            Some(proxy_stream) => {
+                                match http_data {
+                                    None => (proxy_stream, target_host, target_port, None),
+                                    Some(data) => (proxy_stream, target_host, target_port, Some(data)),
+                                }
+                            }
                         }
                     }
                 }
@@ -194,10 +206,42 @@ impl HttpTransport {
         );
         proxy_framed.send(connect_message).await?;
         proxy_framed.flush().await?;
-        return Ok((client_stream_framed, Some(proxy_framed), None));
+        let proxy_connect_response = proxy_framed.next().await;
+        let proxy_message = loop {
+            match proxy_connect_response {
+                None => {
+                    tokio::time::sleep(Duration::from_secs(10)).await;
+                    continue;
+                }
+                Some(response) => {
+                    match response {
+                        Err(e) => {
+                            return Err(PpaassAgentError::ConnectToProxyFail.into());
+                        }
+                        Ok(r) => {
+                            break r;
+                        }
+                    }
+                }
+            }
+        };
+        let PpaassMessageSplitResult {
+            payload,
+            ..
+        } = proxy_message.split();
+        let message_payload: PpaassProxyMessagePayload = payload.try_into()?;
+        return match message_payload.payload_type() {
+            PpaassProxyMessagePayloadType::TcpConnectSuccess => {
+                self.status = TransportStatus::Connected;
+                Ok((client_stream_framed, Some(proxy_framed), http_init_message))
+            }
+            _status => {
+                Err(PpaassAgentError::ConnectToProxyFail.into())
+            }
+        };
     }
 
-    async fn relay(&mut self, client_stream_framed: HttpFramed, proxy_stream_framed: PpaassMessageFramed) -> Result<()> {
+    async fn relay(&mut self, client_stream_framed: HttpFramed, proxy_stream_framed: PpaassMessageFramed, init_message: Option<Vec<u8>>) -> Result<()> {
         todo!()
     }
 
