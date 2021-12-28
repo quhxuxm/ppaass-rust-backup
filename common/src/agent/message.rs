@@ -6,6 +6,7 @@ use crate::common::*;
 #[derive(Debug, Copy, Clone)]
 pub enum PpaassAgentMessagePayloadType {
     TcpConnect,
+    TcpConnectionClose,
     TcpData,
     UdpAssociate,
     UdpData,
@@ -14,10 +15,11 @@ pub enum PpaassAgentMessagePayloadType {
 impl From<PpaassAgentMessagePayloadType> for u8 {
     fn from(value: PpaassAgentMessagePayloadType) -> Self {
         match value {
-            PpaassAgentMessagePayloadType::TcpConnect => 1,
-            PpaassAgentMessagePayloadType::TcpData => 2,
-            PpaassAgentMessagePayloadType::UdpAssociate => 3,
-            PpaassAgentMessagePayloadType::UdpData => 4,
+            PpaassAgentMessagePayloadType::TcpConnect => 10,
+            PpaassAgentMessagePayloadType::TcpData => 11,
+            PpaassAgentMessagePayloadType::TcpConnectionClose => 12,
+            PpaassAgentMessagePayloadType::UdpAssociate => 20,
+            PpaassAgentMessagePayloadType::UdpData => 21,
         }
     }
 }
@@ -27,10 +29,11 @@ impl TryFrom<u8> for PpaassAgentMessagePayloadType {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            1 => Ok(PpaassAgentMessagePayloadType::TcpConnect),
-            2 => Ok(PpaassAgentMessagePayloadType::TcpData),
-            3 => Ok(PpaassAgentMessagePayloadType::UdpAssociate),
-            4 => Ok(PpaassAgentMessagePayloadType::UdpData),
+            10 => Ok(PpaassAgentMessagePayloadType::TcpConnect),
+            11 => Ok(PpaassAgentMessagePayloadType::TcpData),
+            12 => Ok(PpaassAgentMessagePayloadType::TcpConnectionClose),
+            20 => Ok(PpaassAgentMessagePayloadType::UdpAssociate),
+            21 => Ok(PpaassAgentMessagePayloadType::UdpData),
             _ => Err(PpaassCommonError::FailToParsePpaassAgentMessagePayloadType(value))
         }
     }

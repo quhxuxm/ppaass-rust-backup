@@ -228,27 +228,42 @@ impl TcpTransport {
                 } = agent_tcp_data_message.split();
                 let agent_message_payload: Result<PpaassAgentMessagePayload, _> = agent_message_payload.try_into();
                 if let Err(e) = agent_message_payload {
-                    error!("Fail to parse agent message payload because of error: {:#?}", e);
+                    error!("Fail to parse agent message payload because of error, transport:[{}], error: {:#?}", transport_id_for_proxy_to_target_relay,e);
                     return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
                 };
                 let agent_message_payload = agent_message_payload.unwrap();
                 let PpaassAgentMessagePayloadSplitResult {
-                    data,
+                    data: agent_message_payload_data,
+                    payload_type: agent_message_payload_type,
                     ..
                 } = agent_message_payload.split();
-                match target_write.write(data.as_slice()).await {
-                    Err(e) => {
-                        error!("Fail to send agent data from proxy to target because of error: {:#?}", e);
+                match agent_message_payload_type {
+                    PpaassAgentMessagePayloadType::TcpData => {
+                        match target_write.write(agent_message_payload_data.as_slice()).await {
+                            Err(e) => {
+                                error!("Fail to send agent data from proxy to target because of error, transport:[{}], error: {:#?}",
+                                    transport_id_for_proxy_to_target_relay, e);
+                                return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
+                            }
+                            Ok(n) => {
+                                proxy_to_target_write_bytes += n;
+                                agent_to_proxy_read_bytes += n;
+                            }
+                        }
+                        if let Err(e) = target_write.flush().await {
+                            error!("Fail to flush agent data from proxy to target because of error, transport:[{}], error: {:#?}",
+                                transport_id_for_proxy_to_target_relay, e);
+                            return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
+                        }
+                    }
+                    PpaassAgentMessagePayloadType::TcpConnectionClose => {
+                        info!("Close agent connection, transport:[{}]",
+                                transport_id_for_proxy_to_target_relay);
                         return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
                     }
-                    Ok(n) => {
-                        proxy_to_target_write_bytes += n;
-                        agent_to_proxy_read_bytes += n;
+                    _ => {
+                        return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
                     }
-                }
-                if let Err(e) = target_write.flush().await {
-                    error!("Fail to flush agent data from proxy to target because of error: {:#?}", e);
-                    return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
                 }
             }
         });

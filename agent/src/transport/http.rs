@@ -219,7 +219,7 @@ impl HttpTransport {
                                             error!("Fail to parse proxy address because of error: {:#?}", e);
                                             continue;
                                         }
-                                        Ok(addr) => addr
+                                        Ok(address) => address
                                     };
                                     let proxy_address_string: String = proxy_address.into();
                                     match TcpStream::connect(proxy_address_string.clone()).await {
@@ -237,7 +237,7 @@ impl HttpTransport {
                         };
                         match proxy_stream {
                             None => {
-                                error!("None of the proxy address is connectable");
+                                error!("None of the proxy address is connectable, http transport:[{}]", transport_id);
                                 Self::send_error_to_client(client_stream_framed).await?;
                                 return Err(PpaassAgentError::ConnectToProxyFail.into());
                             }
@@ -314,14 +314,21 @@ impl HttpTransport {
         } = message_payload.split();
         return match proxy_message_payload_type {
             PpaassProxyMessagePayloadType::TcpConnectSuccess => {
-                let http_connect_success_response = Response::new(
-                    HttpVersion::V1_1,
-                    StatusCode::new(OK_CODE).unwrap(),
-                    ReasonPhrase::new(CONNECTION_ESTABLISHED).unwrap(),
-                    vec![],
-                );
-                client_stream_framed.send(http_connect_success_response).await?;
-                client_stream_framed.flush().await?;
+                match http_init_message {
+                    None => {
+                        let http_connect_success_response = Response::new(
+                            HttpVersion::V1_1,
+                            StatusCode::new(OK_CODE).unwrap(),
+                            ReasonPhrase::new(CONNECTION_ESTABLISHED).unwrap(),
+                            vec![],
+                        );
+                        client_stream_framed.send(http_connect_success_response).await?;
+                        client_stream_framed.flush().await?;
+                    }
+                    Some(_) => {
+                        debug!("Http request do not need return connection established, http transport: [{}]", transport_id)
+                    }
+                }
                 self.status = TransportStatus::Connected;
                 self.source_address = Some(source_address.clone());
                 self.target_address = Some(target_address.clone());
@@ -398,6 +405,27 @@ impl HttpTransport {
                     }
                     Ok(data_size) => {
                         if data_size == 0 && read_buf.remaining_mut() > 0 {
+                            let connection_close_message_body = PpaassAgentMessagePayload::new(
+                                source_address.clone(),
+                                target_address.clone(),
+                                PpaassAgentMessagePayloadType::TcpConnectionClose,
+                                read_buf,
+                            );
+                            let connection_close_message = PpaassMessage::new(
+                                "".to_string(),
+                                user_token.clone(),
+                                generate_uuid().into_bytes(),
+                                PpaassMessagePayloadEncryptionType::random(),
+                                connection_close_message_body.into(),
+                            );
+                            if let Err(e) = proxy_framed_write.send(connection_close_message).await {
+                                error!("Fail to send connection close from agent to proxy because of error, error: {:#?}", e);
+                                break;
+                            }
+                            if let Err(e) = proxy_framed_write.flush().await {
+                                error!("Fail to flush connection close from agent to proxy because of error, error: {:#?}", e);
+                                break;
+                            }
                             return (client_read_bytes, proxy_write_bytes);
                         }
                         client_read_bytes += data_size;
@@ -438,8 +466,8 @@ impl HttpTransport {
                 match proxy_message {
                     None => {
                         info!("Noting read from proxy for http transport: [{}]", transport_id_for_proxy_to_client_relay);
-                        return (proxy_read_bytes, client_write_bytes)
-                    },
+                        return (proxy_read_bytes, client_write_bytes);
+                    }
                     Some(proxy_message) => {
                         match proxy_message {
                             Err(e) => {
