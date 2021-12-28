@@ -306,7 +306,7 @@ impl TcpTransport {
                 }
                 target_to_proxy_read_bytes += read_size;
                 debug!("Receive target data for tcp transport: [{}]\n{}\n", transport_id_for_target_to_proxy_relay,
-                    String::from_utf8(target_read_buf.clone()).unwrap_or_else(|_| "####FAIL TO WUN WRAP####".to_string()));
+                    String::from_utf8_lossy(&target_read_buf));
                 let tcp_data_success_message_payload = PpaassProxyMessagePayload::new(
                     source_address_for_target_to_proxy_relay.clone(),
                     target_address_for_target_to_proxy_relay.clone(),

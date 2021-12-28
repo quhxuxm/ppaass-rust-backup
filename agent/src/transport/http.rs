@@ -498,7 +498,7 @@ impl HttpTransport {
                                             }
                                             PpaassProxyMessagePayloadType::TcpData => {
                                                 proxy_read_bytes += proxy_message_data.len();
-                                                debug!("Receive target data for http transport: [{}]\n{}\n", transport_id_for_proxy_to_client_relay, String::from_utf8(proxy_message_data.clone()).unwrap_or_else(|_| "####FAIL TO WUN WRAP####".to_string()));
+                                                debug!("Receive target data for http transport: [{}]\n{}\n", transport_id_for_proxy_to_client_relay, String::from_utf8_lossy(&proxy_message_data));
                                                 if let Err(e) = client_tcp_stream_write.write(&proxy_message_data).await {
                                                     error!("Fail to send data from agent to client because of error, http transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
                                                     return (proxy_read_bytes, client_write_bytes);
