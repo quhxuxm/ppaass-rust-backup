@@ -7,6 +7,7 @@ use crate::common::*;
 pub enum PpaassProxyMessagePayloadType {
     TcpConnectSuccess,
     TcpConnectFail,
+    TcpConnectionClose,
     TcpData,
     TcpDataRelayFail,
     UdpAssociateSuccess,
@@ -21,6 +22,7 @@ impl From<PpaassProxyMessagePayloadType> for u8 {
             PpaassProxyMessagePayloadType::TcpConnectFail => 11,
             PpaassProxyMessagePayloadType::TcpData => 12,
             PpaassProxyMessagePayloadType::TcpDataRelayFail => 13,
+            PpaassProxyMessagePayloadType::TcpConnectionClose => 14,
             PpaassProxyMessagePayloadType::UdpAssociateSuccess => 21,
             PpaassProxyMessagePayloadType::UdpAssociateFail => 22,
             PpaassProxyMessagePayloadType::UdpDataRelayFail => 23,
@@ -37,6 +39,7 @@ impl TryFrom<u8> for PpaassProxyMessagePayloadType {
             11 => Ok(PpaassProxyMessagePayloadType::TcpConnectFail),
             12 => Ok(PpaassProxyMessagePayloadType::TcpData),
             13 => Ok(PpaassProxyMessagePayloadType::TcpDataRelayFail),
+            14 => Ok(PpaassProxyMessagePayloadType::TcpConnectionClose),
             21 => Ok(PpaassProxyMessagePayloadType::UdpAssociateSuccess),
             22 => Ok(PpaassProxyMessagePayloadType::UdpAssociateFail),
             23 => Ok(PpaassProxyMessagePayloadType::UdpDataRelayFail),

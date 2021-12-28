@@ -267,6 +267,26 @@ impl TcpTransport {
                 };
                 if read_size == 0 && target_read_buf.remaining_mut() > 0 {
                     info!("Nothing to read from target, tcp transport: [{}]", transport_id_for_target_to_proxy_relay);
+                    let tcp_connection_close_message_payload = PpaassProxyMessagePayload::new(
+                        source_address_for_target_to_proxy_relay.clone(),
+                        target_address_for_target_to_proxy_relay.clone(),
+                        PpaassProxyMessagePayloadType::TcpConnectionClose,
+                        target_read_buf,
+                    );
+                    let tcp_connection_close_message = PpaassMessage::new_with_random_encryption_type(
+                        "".to_string(),
+                        user_token_for_target_to_proxy_relay.clone(),
+                        generate_uuid().as_bytes().to_vec(),
+                        tcp_connection_close_message_payload.into(),
+                    );
+                    if let Err(e) = agent_write_part.send(tcp_connection_close_message).await {
+                        error!("Fail to send connection close from proxy to client because of error: {:#?}", e);
+                        return (target_to_proxy_read_bytes, proxy_to_agent_write_bytes);
+                    };
+                    if let Err(e) = agent_write_part.flush().await {
+                        error!("Fail to flush connection close from proxy to client because of error: {:#?}", e);
+                        return (target_to_proxy_read_bytes, proxy_to_agent_write_bytes);
+                    };
                     return (target_to_proxy_read_bytes, proxy_to_agent_write_bytes);
                 }
                 target_to_proxy_read_bytes += read_size;

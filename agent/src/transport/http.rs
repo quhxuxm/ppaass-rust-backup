@@ -481,6 +481,10 @@ impl HttpTransport {
                                                 }
                                                 client_write_bytes += proxy_message_data.len();
                                             }
+                                            PpaassProxyMessagePayloadType::TcpConnectionClose => {
+                                                error!("Http transport:[{}] close",transport_id_for_proxy_to_client_relay);
+                                                return (proxy_read_bytes, client_write_bytes);
+                                            }
                                             other_payload_type => {
                                                 error!("Fail to read data from proxy because of proxy give invalid type: {:?}, http transport:[{}]", other_payload_type, transport_id_for_proxy_to_client_relay);
                                                 continue;
