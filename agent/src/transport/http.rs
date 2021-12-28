@@ -302,12 +302,12 @@ impl HttpTransport {
             }
         };
         let PpaassMessageSplitResult {
-            id,
-            ref_id,
-            payload,
+            id: proxy_message_id,
+            ref_id: _proxy_message_ref_id,
+            payload: proxy_message_payload,
             ..
         } = proxy_message.split();
-        let message_payload: PpaassProxyMessagePayload = payload.try_into()?;
+        let message_payload: PpaassProxyMessagePayload = proxy_message_payload.try_into()?;
         let PpaassProxyMessagePayloadSplitResult {
             payload_type: proxy_message_payload_type,
             ..
@@ -336,7 +336,7 @@ impl HttpTransport {
                     client_tcp_stream,
                     proxy_framed,
                     http_init_message,
-                    connect_message_id: id,
+                    connect_message_id: proxy_message_id,
                     source_address,
                     target_address,
                 }));
