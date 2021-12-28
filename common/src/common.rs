@@ -1,12 +1,12 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 use std::str::FromStr;
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use uuid::Uuid;
 
 pub use crate::agent::*;
 use crate::common::PpaassAddressType::{Domain, IpV4, IpV6};
 pub use crate::error::*;
+use crate::generate_uuid;
 pub use crate::proxy::*;
 
 /// The address type in Ppaass common
@@ -85,6 +85,7 @@ impl TryFrom<String> for PpaassAddress {
         })
     }
 }
+
 impl TryFrom<PpaassAddress> for SocketAddr {
     type Error = PpaassCommonError;
 
@@ -115,7 +116,13 @@ impl TryFrom<&PpaassAddress> for SocketAddr {
                 Ok(SocketAddr::new(IpAddr::V6(Ipv6Addr::from(ipv6_byte_array)), value.port()))
             }
             PpaassAddressType::Domain => {
-                Ok(SocketAddr::from_str(format!("{}:{}", String::from_utf8(value.host.to_vec()).map_err(|e| PpaassCommonError::FailToParsePpaassDomainAddress)?, value.port).as_str()).map_err(|e| PpaassCommonError::FailToParsePpaassDomainAddress)?)
+                let socket_addresses = format!("{}:{}", String::from_utf8(value.host.to_vec()).map_err(|e|
+                    PpaassCommonError::FailToParsePpaassDomainAddress)?, value.port).to_socket_addrs().map_err(|e| PpaassCommonError::FailToParsePpaassDomainAddress)?;
+                let socket_addresses: Vec<_> = socket_addresses.collect();
+                if socket_addresses.is_empty() {
+                    return Err(PpaassCommonError::FailToParsePpaassDomainAddress);
+                }
+                Ok(socket_addresses[0])
             }
         }
     }
@@ -265,9 +272,9 @@ impl TryFrom<u8> for PpaassMessagePayloadEncryptionType {
 #[derive(Debug)]
 pub struct PpaassMessage {
     /// The message id
-    id: Vec<u8>,
+    id: String,
     /// The message id that this message reference to
-    ref_id: Vec<u8>,
+    ref_id: String,
     /// The user token
     user_token: Vec<u8>,
     /// The payload encryption token
@@ -281,9 +288,9 @@ pub struct PpaassMessage {
 #[derive(Debug)]
 pub struct PpaassMessageSplitResult {
     /// The message id
-    pub id: Vec<u8>,
+    pub id: String,
     /// The message id that this message reference to
-    pub ref_id: Vec<u8>,
+    pub ref_id: String,
     /// The user token
     pub user_token: Vec<u8>,
     /// The payload encryption token
@@ -295,9 +302,9 @@ pub struct PpaassMessageSplitResult {
 }
 
 impl PpaassMessage {
-    pub fn new_with_random_encryption_type(ref_id: Vec<u8>, user_token: Vec<u8>, payload_encryption_token: Vec<u8>,
+    pub fn new_with_random_encryption_type(ref_id: String, user_token: Vec<u8>, payload_encryption_token: Vec<u8>,
         payload: Vec<u8>) -> Self {
-        let id: Vec<u8> = Uuid::new_v4().as_bytes().to_vec();
+        let id = generate_uuid();
         let payload_encryption_type = PpaassMessagePayloadEncryptionType::random();
         Self {
             id,
@@ -308,10 +315,10 @@ impl PpaassMessage {
             payload,
         }
     }
-    pub fn new(ref_id: Vec<u8>, user_token: Vec<u8>, payload_encryption_token: Vec<u8>,
+    pub fn new(ref_id: String, user_token: Vec<u8>, payload_encryption_token: Vec<u8>,
         payload_encryption_type: PpaassMessagePayloadEncryptionType,
         payload: Vec<u8>) -> Self {
-        let id: Vec<u8> = Uuid::new_v4().as_bytes().to_vec();
+        let id = generate_uuid();
         Self {
             id,
             ref_id,
@@ -335,10 +342,10 @@ impl PpaassMessage {
 }
 
 impl PpaassMessage {
-    pub fn id(&self) -> &Vec<u8> {
+    pub fn id(&self) -> &String {
         &self.id
     }
-    pub fn ref_id(&self) -> &Vec<u8> {
+    pub fn ref_id(&self) -> &String {
         &self.ref_id
     }
     pub fn user_token(&self) -> &Vec<u8> {
@@ -358,12 +365,12 @@ impl PpaassMessage {
 impl From<PpaassMessage> for Vec<u8> {
     fn from(value: PpaassMessage) -> Self {
         let mut result = BytesMut::new();
-        let id_length = value.id.len();
+        let id_length = value.id.as_bytes().len();
         result.put_u64(id_length as u64);
-        result.put_slice(value.id.as_slice());
-        let ref_id_length = value.id.len();
+        result.put_slice(value.id.as_bytes());
+        let ref_id_length = value.ref_id.as_bytes().len();
         result.put_u64(ref_id_length as u64);
-        result.put_slice(value.ref_id.as_slice());
+        result.put_slice(value.ref_id.as_bytes());
         let user_token_length = value.user_token.len();
         result.put_u64(user_token_length as u64);
         result.put_slice(value.user_token.as_slice());
@@ -384,10 +391,10 @@ impl TryFrom<Vec<u8>> for PpaassMessage {
         let mut bytes = Bytes::from(value);
         let id_length = bytes.get_u64();
         let id_bytes = bytes.copy_to_bytes(id_length as usize);
-        let id: Vec<u8> = id_bytes.to_vec();
+        let id = String::from_utf8(id_bytes.to_vec())?;
         let ref_id_length = bytes.get_u64();
         let ref_id_bytes = bytes.copy_to_bytes(ref_id_length as usize);
-        let ref_id: Vec<u8> = ref_id_bytes.to_vec();
+        let ref_id = String::from_utf8(ref_id_bytes.to_vec())?;
         let user_token_length = bytes.get_u64();
         let user_token_bytes = bytes.copy_to_bytes(user_token_length as usize);
         let user_token: Vec<u8> = user_token_bytes.to_vec();

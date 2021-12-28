@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::string::FromUtf8Error;
 
 #[derive(thiserror::Error, Debug)]
 pub enum PpaassCommonError {
@@ -18,6 +19,8 @@ pub enum PpaassCommonError {
     FailToParsePpaassAgentMessagePayloadType(u8),
     #[error("Fail to parse ppaass proxy message payload type: {0}")]
     FailToParsePpaassProxyMessagePayloadType(u8),
+    #[error("Fail to parse utf8 string: {0:#?}")]
+    FailToParseUtf8String(#[from]FromUtf8Error),
     #[error("Fail to parse rsa key")]
     FailToParseRsaKey {
         source: rsa::pkcs8::Error,
@@ -28,6 +31,6 @@ pub enum PpaassCommonError {
     },
     #[error("I/O error happen")]
     IoError {
-       #[from] source: std::io::Error
+        #[from] source: std::io::Error
     },
 }

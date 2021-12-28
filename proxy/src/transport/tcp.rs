@@ -12,7 +12,7 @@ use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 use tokio_util::codec::{Decoder, Framed};
 
-use ppaass_common::agent::{PpaassAgentMessagePayload, PpaassAgentMessagePayloadType};
+use ppaass_common::agent::{PpaassAgentMessagePayload, PpaassAgentMessagePayloadSplitResult, PpaassAgentMessagePayloadType};
 use ppaass_common::codec::PpaassMessageCodec;
 use ppaass_common::common::{PpaassAddress, PpaassMessage, PpaassMessageSplitResult, PpaassProxyMessagePayload, PpaassProxyMessagePayloadType};
 use ppaass_common::generate_uuid;
@@ -117,28 +117,36 @@ impl TcpTransport {
         let init_message = init_message.context("Fail to unwrap ppaass message from source edge.")??;
         debug!("Receive agent message: {:#?}", init_message);
         let PpaassMessageSplitResult {
-            id: agent_message_id_bytes,
+            id: agent_message_id,
             user_token,
             payload,
             ..
         } = init_message.split();
-        let agent_message_id = String::from_utf8(agent_message_id_bytes.clone())?;
         let agent_message_body: PpaassAgentMessagePayload = payload.try_into()?;
+        let PpaassAgentMessagePayloadSplitResult {
+            source_address: agent_message_source_address,
+            /// The target address
+            target_address: agent_message_target_address,
+            /// The payload type
+            payload_type: agent_message_payload_type,
+            /// The data
+            data: agent_message_data
+        } = agent_message_body.split();
         let target_stream: TcpStream;
-        match agent_message_body.payload_type() {
+        match agent_message_payload_type {
             PpaassAgentMessagePayloadType::TcpConnect => {
-                let target_address: SocketAddr = agent_message_body.target_address().clone().try_into()?;
-                let target_stream_connect_result = TcpStream::connect(target_address).await;
+                let target_socket_address: SocketAddr = agent_message_target_address.clone().try_into()?;
+                let target_stream_connect_result = TcpStream::connect(target_socket_address).await;
                 if let Err(e) = target_stream_connect_result {
-                    error!("Fail connect to target, transport: [{}], agent message id: [{}], target address: [{}], because of error: {:#?}", agent_message_id, self.id, target_address, e);
+                    error!("Fail connect to target, transport: [{}], agent message id: [{}], target address: [{}], because of error: {:#?}", agent_message_id, self.id, target_socket_address, e);
                     let tcp_connect_fail_message_payload = PpaassProxyMessagePayload::new(
-                        agent_message_body.source_address().clone(),
-                        agent_message_body.target_address().clone(),
+                        agent_message_source_address.clone(),
+                        agent_message_target_address.clone(),
                         PpaassProxyMessagePayloadType::TcpConnectFail,
                         vec![],
                     );
                     let tcp_connect_fail_message = PpaassMessage::new_with_random_encryption_type(
-                        agent_message_id_bytes.clone(),
+                        agent_message_id.clone(),
                         user_token.clone(),
                         generate_uuid().as_bytes().to_vec(),
                         tcp_connect_fail_message_payload.into(),
@@ -149,13 +157,13 @@ impl TcpTransport {
                 }
                 target_stream = target_stream_connect_result.unwrap();
                 let tcp_connect_success_message_payload = PpaassProxyMessagePayload::new(
-                    agent_message_body.source_address().clone(),
-                    agent_message_body.target_address().clone(),
+                    agent_message_source_address.clone(),
+                    agent_message_target_address.clone(),
                     PpaassProxyMessagePayloadType::TcpConnectSuccess,
                     vec![],
                 );
                 let tcp_connect_success_message = PpaassMessage::new_with_random_encryption_type(
-                    agent_message_id_bytes.clone(),
+                    agent_message_id.clone(),
                     user_token.clone(),
                     generate_uuid().as_bytes().to_vec(),
                     tcp_connect_success_message_payload.into(),
@@ -163,8 +171,8 @@ impl TcpTransport {
                 agent_stream_framed.send(tcp_connect_success_message).await?;
                 agent_stream_framed.flush().await?;
                 self.user_token = Some(user_token.clone());
-                self.source_address = Some(agent_message_body.source_address().clone());
-                self.target_address = Some(agent_message_body.target_address().clone());
+                self.source_address = Some(agent_message_source_address.clone());
+                self.target_address = Some(agent_message_target_address.clone());
                 self.status = TcpTransportStatus::Initialized;
                 let transport_snapshot = self.take_snapshot();
                 self.snapshot_sender.send(transport_snapshot).await?;
@@ -173,7 +181,7 @@ impl TcpTransport {
                 return Err(PpaassProxyError::ReceiveInvalidAgentMessage(
                     agent_message_id,
                     PpaassAgentMessagePayloadType::TcpConnect,
-                    *status).into());
+                    status).into());
             }
         }
         Ok(Some((agent_stream_framed, target_stream)))
@@ -219,7 +227,11 @@ impl TcpTransport {
                     return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
                 };
                 let agent_message_payload = agent_message_payload.unwrap();
-                match target_write.write(agent_message_payload.data().as_slice()).await {
+                let PpaassAgentMessagePayloadSplitResult {
+                    data,
+                    ..
+                } = agent_message_payload.split();
+                match target_write.write(data.as_slice()).await {
                     Err(e) => {
                         error!("Fail to send agent data from proxy to target because of error: {:#?}", e);
                         return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
@@ -257,7 +269,7 @@ impl TcpTransport {
                     target_read_buf,
                 );
                 let tcp_data_success_message = PpaassMessage::new_with_random_encryption_type(
-                    vec![],
+                    "".to_string(),
                     user_token_for_target_to_proxy_relay.clone(),
                     generate_uuid().as_bytes().to_vec(),
                     tcp_data_success_message_payload.into(),

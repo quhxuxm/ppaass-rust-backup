@@ -18,27 +18,31 @@ pub(crate) enum TransportStatus {
     Closed,
 }
 
+#[derive(Debug)]
 pub(crate) struct TransportSnapshot {
-    id: String,
-    status: TransportStatus,
-    client_read_bytes: usize,
-    client_write_bytes: usize,
-    proxy_read_bytes: usize,
-    proxy_write_bytes: usize,
-    start_time: u128,
-    end_time: Option<u128>,
-    user_token: Option<Vec<u8>>,
-    client_remote_address: SocketAddr,
-    source_address: Option<PpaassAddress>,
-    target_address: Option<PpaassAddress>,
-    snapshot_sender: Sender<TransportSnapshot>,
+    pub id: String,
+    pub status: TransportStatus,
+    pub client_read_bytes: usize,
+    pub client_write_bytes: usize,
+    pub proxy_read_bytes: usize,
+    pub proxy_write_bytes: usize,
+    pub start_time: u128,
+    pub end_time: Option<u128>,
+    pub user_token: Vec<u8>,
+    pub client_remote_address: Option<SocketAddr>,
+    pub source_address: Option<PpaassAddress>,
+    pub target_address: Option<PpaassAddress>,
 }
 
 #[async_trait]
 pub(crate) trait Transport where Self: Send {
     async fn start(&mut self, client_tcp_stream: TcpStream, rsa_public_key: String,
-                   rsa_private_key: String) -> Result<()>;
+        rsa_private_key: String) -> Result<()>;
 
     fn take_snapshot(&self) -> TransportSnapshot;
+
+    fn id(&self) -> String;
+
+    async fn close(&mut self) -> Result<()>;
 }
 

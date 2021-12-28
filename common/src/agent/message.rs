@@ -49,6 +49,18 @@ pub struct PpaassAgentMessagePayload {
     data: Vec<u8>,
 }
 
+#[derive(Debug)]
+pub struct PpaassAgentMessagePayloadSplitResult {
+    /// The source address
+    pub source_address: PpaassAddress,
+    /// The target address
+    pub target_address: PpaassAddress,
+    /// The payload type
+    pub payload_type: PpaassAgentMessagePayloadType,
+    /// The data
+    pub data: Vec<u8>,
+}
+
 impl PpaassAgentMessagePayload {
     pub fn new(source_address: PpaassAddress,
         target_address: PpaassAddress,
@@ -56,20 +68,14 @@ impl PpaassAgentMessagePayload {
         data: Vec<u8>) -> Self {
         PpaassAgentMessagePayload { source_address, target_address, payload_type, data }
     }
-}
 
-impl PpaassAgentMessagePayload {
-    pub fn source_address(&self) -> &PpaassAddress {
-        &self.source_address
-    }
-    pub fn target_address(&self) -> &PpaassAddress {
-        &self.target_address
-    }
-    pub fn payload_type(&self) -> &PpaassAgentMessagePayloadType {
-        &self.payload_type
-    }
-    pub fn data(&self) -> &Vec<u8> {
-        &self.data
+    pub fn split(self) -> PpaassAgentMessagePayloadSplitResult {
+        PpaassAgentMessagePayloadSplitResult {
+            source_address: self.source_address,
+            target_address: self.target_address,
+            payload_type: self.payload_type,
+            data: self.data,
+        }
     }
 }
 

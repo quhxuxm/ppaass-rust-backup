@@ -127,7 +127,7 @@ impl Server {
 
         let transports = self.transports.clone();
         self.master_runtime.spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(10));
+            let mut interval = tokio::time::interval(Duration::from_secs(30));
             loop {
                 println!("######Transport list on proxy: \n\n");
                 {
