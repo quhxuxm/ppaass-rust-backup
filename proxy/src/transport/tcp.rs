@@ -206,10 +206,10 @@ impl TcpTransport {
         let transport_id_for_target_to_proxy_relay = self.id.clone();
         let transport_id_for_proxy_to_target_relay = self.id.clone();
         let proxy_to_target_relay = tokio::spawn(async move {
-            info!("Begin to do tcp relay from proxy to target for tcp transport: [{}]",transport_id_for_proxy_to_target_relay );
             let mut proxy_to_target_write_bytes = 0usize;
             let mut agent_to_proxy_read_bytes = 0usize;
             loop {
+                info!("Begin to loop for tcp relay from proxy to target for tcp transport: [{}]",transport_id_for_proxy_to_target_relay );
                 let agent_tcp_data_message = agent_read_part.next().await;
                 if agent_tcp_data_message.is_none() {
                     info!("Nothing to read from agent, tcp transport: [{}]", transport_id_for_proxy_to_target_relay);
@@ -253,10 +253,10 @@ impl TcpTransport {
             }
         });
         let target_to_proxy_relay = tokio::spawn(async move {
-            info!("Begin to do tcp relay from target to proxy for tcp transport: [{}]",transport_id_for_target_to_proxy_relay );
             let mut target_to_proxy_read_bytes = 0usize;
             let mut proxy_to_agent_write_bytes = 0usize;
             loop {
+                info!("Begin the loop for tcp relay from target to proxy for tcp transport: [{}]",transport_id_for_target_to_proxy_relay );
                 let mut target_read_buf = Vec::<u8>::with_capacity(1024 * 64);
                 let read_size = match target_read.read_buf(&mut target_read_buf).await {
                     Err(e) => {
