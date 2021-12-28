@@ -510,7 +510,7 @@ impl HttpTransport {
                                                 client_write_bytes += proxy_message_data.len();
                                             }
                                             PpaassProxyMessagePayloadType::TcpConnectionClose => {
-                                                error!("Http transport:[{}] close",transport_id_for_proxy_to_client_relay);
+                                                info!("Http transport:[{}] close",transport_id_for_proxy_to_client_relay);
                                                 return (proxy_read_bytes, client_write_bytes);
                                             }
                                             other_payload_type => {

@@ -21,7 +21,7 @@ appenders:
         count: 20
         base: 1
 root:
-  level: info
+  level: error
   appenders:
     - stdout
     - file
