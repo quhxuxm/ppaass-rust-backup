@@ -3,9 +3,10 @@ use std::time::SystemTime;
 
 use anyhow::Context;
 use anyhow::Result;
+use bytes::buf::BufMut;
 use futures::StreamExt;
 use futures_util::SinkExt;
-use log::{debug, error};
+use log::{debug, error, info};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
@@ -202,26 +203,30 @@ impl TcpTransport {
         let target_address_for_target_to_proxy_relay = target_address.clone();
         let (mut target_read, mut target_write) = target_stream.into_split();
         let (mut agent_write_part, mut agent_read_part) = agent_edge_framed.split();
+        let transport_id_for_target_to_proxy_relay = self.id.clone();
+        let transport_id_for_proxy_to_target_relay = self.id.clone();
         let proxy_to_target_relay = tokio::spawn(async move {
+            info!("Begin to do tcp relay from proxy to target for tcp transport: [{}]",transport_id_for_proxy_to_target_relay );
             let mut proxy_to_target_write_bytes = 0usize;
             let mut agent_to_proxy_read_bytes = 0usize;
             loop {
                 let agent_tcp_data_message = agent_read_part.next().await;
                 if agent_tcp_data_message.is_none() {
+                    info!("Nothing to read from agent, tcp transport: [{}]", transport_id_for_proxy_to_target_relay);
                     return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
                 }
                 let agent_tcp_data_message = agent_tcp_data_message.unwrap();
                 if let Err(e) = agent_tcp_data_message {
-                    error!("Fail to decode agent message because of error: {:#?}", e);
+                    error!("Fail to decode agent message because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
                     return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
                 }
                 let agent_tcp_data_message = agent_tcp_data_message.unwrap();
                 let PpaassMessageSplitResult {
-                    id,
-                    payload,
+                    id: agent_message_id,
+                    payload: agent_message_payload,
                     ..
                 } = agent_tcp_data_message.split();
-                let agent_message_payload: Result<PpaassAgentMessagePayload, _> = payload.try_into();
+                let agent_message_payload: Result<PpaassAgentMessagePayload, _> = agent_message_payload.try_into();
                 if let Err(e) = agent_message_payload {
                     error!("Fail to parse agent message payload because of error: {:#?}", e);
                     return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
@@ -248,20 +253,25 @@ impl TcpTransport {
             }
         });
         let target_to_proxy_relay = tokio::spawn(async move {
+            info!("Begin to do tcp relay from target to proxy for tcp transport: [{}]",transport_id_for_target_to_proxy_relay );
             let mut target_to_proxy_read_bytes = 0usize;
             let mut proxy_to_agent_write_bytes = 0usize;
             loop {
-                let mut target_read_buf = Vec::<u8>::with_capacity(64 * 1024);
+                let mut target_read_buf = Vec::<u8>::with_capacity(1024 * 64);
                 let read_size = match target_read.read_buf(&mut target_read_buf).await {
                     Err(e) => {
+                        error!("Fail to read target data because of error, tcp transport: [{}] error: {:#?}", transport_id_for_target_to_proxy_relay, e);
                         return (target_to_proxy_read_bytes, proxy_to_agent_write_bytes);
                     }
                     Ok(size) => size
                 };
-                if read_size == 0 && (target_read_buf.len() == target_read_buf.capacity()) {
+                if read_size == 0 && target_read_buf.remaining_mut() > 0 {
+                    info!("Nothing to read from target, tcp transport: [{}]", transport_id_for_target_to_proxy_relay);
                     return (target_to_proxy_read_bytes, proxy_to_agent_write_bytes);
                 }
                 target_to_proxy_read_bytes += read_size;
+                debug!("Receive target data for tcp transport: [{}]\n{}\n", transport_id_for_target_to_proxy_relay,
+                    String::from_utf8(target_read_buf.clone()).unwrap_or_else(|_| "####FAIL TO WUN WRAP####".to_string()));
                 let tcp_data_success_message_payload = PpaassProxyMessagePayload::new(
                     source_address_for_target_to_proxy_relay.clone(),
                     target_address_for_target_to_proxy_relay.clone(),

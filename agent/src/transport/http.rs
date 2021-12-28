@@ -9,7 +9,7 @@ use bytecodec::EncodeExt;
 use bytes::BufMut;
 use futures_util::{SinkExt, StreamExt};
 use httpcodec::{BodyEncoder, HttpVersion, ReasonPhrase, RequestEncoder, Response, StatusCode};
-use log::{error, info};
+use log::{debug, error, info};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
@@ -74,19 +74,18 @@ impl Transport for HttpTransport {
         let init_result = self.init(client_tcp_stream, rsa_public_key, rsa_private_key).await;
         match init_result {
             Err(e) => {
-                self.close().await?;
+                error!("Fail to do init for http transport: [{}] because of error: {:#?}", self.id, e);
                 return Err(PpaassAgentError::ConnectToProxyFail.into());
             }
             Ok(init_result) => {
                 match init_result {
                     None => {
-                        info!("Nothing read from http connection, close it.");
-                        self.close().await?;
+                        info!("Nothing read from init  for http transport: [{}]", self.id
+                        );
                         return Ok(());
                     }
                     Some(r) => {
                         self.relay(r).await?;
-                        self.close().await?;
                     }
                 }
             }
@@ -118,6 +117,7 @@ impl Transport for HttpTransport {
     async fn close(&mut self) -> Result<()> {
         self.status = TransportStatus::Closed;
         self.end_time = Some(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?.as_millis());
+        info!("Graceful close http transport [{}]", self.id);
         Ok(())
     }
 }
@@ -358,6 +358,8 @@ impl HttpTransport {
         self.status = TransportStatus::Relaying;
         let user_token = self.user_token.clone();
         let (mut client_tcp_stream_read, mut client_tcp_stream_write) = client_tcp_stream.into_split();
+        let transport_id_for_proxy_to_client_relay = self.id.clone();
+        let transport_id_for_client_to_proxy_relay = self.id.clone();
         let client_to_proxy_relay = tokio::spawn(async move {
             let mut client_read_bytes = 0;
             let mut proxy_write_bytes = 0;
@@ -431,13 +433,17 @@ impl HttpTransport {
             let mut client_write_bytes = 0;
             let mut proxy_read_bytes = 0;
             loop {
+                info!("Begin the loop to read from proxy for http transport: [{}]", transport_id_for_proxy_to_client_relay);
                 let proxy_message = proxy_framed_read.next().await;
                 match proxy_message {
-                    None => return (proxy_read_bytes, client_write_bytes),
+                    None => {
+                        info!("Noting read from proxy for http transport: [{}]", transport_id_for_proxy_to_client_relay);
+                        return (proxy_read_bytes, client_write_bytes)
+                    },
                     Some(proxy_message) => {
                         match proxy_message {
                             Err(e) => {
-                                error!("Fail to read data from proxy because of error, error: {:#?}", e);
+                                error!("Fail to read data from proxy because of error, http transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
                                 return (proxy_read_bytes, client_write_bytes);
                             }
                             Ok(proxy_message) => {
@@ -448,7 +454,7 @@ impl HttpTransport {
                                 let payload: Result<PpaassProxyMessagePayload, _> = payload.try_into();
                                 match payload {
                                     Err(e) => {
-                                        error!("Fail to read data from proxy because of error, error: {:#?}", e);
+                                        error!("Fail to read data from proxy because of error, http transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
                                         return (proxy_read_bytes, client_write_bytes);
                                     }
                                     Ok(payload) => {
@@ -459,23 +465,24 @@ impl HttpTransport {
                                         } = payload.split();
                                         match proxy_message_payload_type {
                                             PpaassProxyMessagePayloadType::TcpDataRelayFail => {
-                                                error!("Fail to read data from proxy because of proxy give data relay fail");
+                                                error!("Fail to read data from proxy because of proxy give data relay fail, http transport: [{}]", transport_id_for_proxy_to_client_relay);
                                                 continue;
                                             }
                                             PpaassProxyMessagePayloadType::TcpData => {
                                                 proxy_read_bytes += proxy_message_data.len();
-                                                if let Err(e) = client_tcp_stream_write.write(proxy_message_data.as_slice()).await {
-                                                    error!("Fail to send data from agent to client because of error, error: {:#?}", e);
+                                                debug!("Receive target data for http transport: [{}]\n{}\n", transport_id_for_proxy_to_client_relay, String::from_utf8(proxy_message_data.clone()).unwrap_or_else(|_| "####FAIL TO WUN WRAP####".to_string()));
+                                                if let Err(e) = client_tcp_stream_write.write(&proxy_message_data).await {
+                                                    error!("Fail to send data from agent to client because of error, http transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
                                                     return (proxy_read_bytes, client_write_bytes);
                                                 }
                                                 if let Err(e) = client_tcp_stream_write.flush().await {
-                                                    error!("Fail to flush data from agent to client because of error, error: {:#?}", e);
+                                                    error!("Fail to flush data from agent to client because of error, http transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
                                                     return (proxy_read_bytes, client_write_bytes);
                                                 }
                                                 client_write_bytes += proxy_message_data.len();
                                             }
                                             other_payload_type => {
-                                                error!("Fail to read data from proxy because of proxy give invalid type: {:?}", other_payload_type);
+                                                error!("Fail to read data from proxy because of proxy give invalid type: {:?}, http transport:[{}]", other_payload_type, transport_id_for_proxy_to_client_relay);
                                                 continue;
                                             }
                                         }
