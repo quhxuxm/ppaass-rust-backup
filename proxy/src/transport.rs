@@ -164,7 +164,7 @@ impl Transport {
             data: agent_message_data
         } = agent_message_body.split();
         let target_tcp_stream: TcpStream;
-        match agent_message_payload_type {
+        return match agent_message_payload_type {
             PpaassAgentMessagePayloadType::TcpConnect => {
                 let target_socket_address: SocketAddr = agent_message_target_address.clone().try_into()?;
                 let target_stream_connect_result = TcpStream::connect(target_socket_address).await;
@@ -206,11 +206,11 @@ impl Transport {
                 self.target_address = Some(agent_message_target_address.clone());
                 self.status = TransportStatus::Initialized;
                 self.publish_transport_snapshot().await?;
-                return Ok(Some(InitResult {
+                Ok(Some(InitResult {
                     agent_stream_framed,
                     target_tcp_stream: Some(target_tcp_stream),
                     target_udp_socket: None,
-                }));
+                }))
             }
             PpaassAgentMessagePayloadType::UdpAssociate => {
                 let local_ip = IpAddr::from(LOCAL_ADDRESS);
@@ -234,17 +234,17 @@ impl Transport {
                 agent_stream_framed.send(udp_associate_success_message).await?;
                 agent_stream_framed.flush().await?;
                 self.status = TransportStatus::Initialized;
-                return Ok(Some(InitResult {
+                Ok(Some(InitResult {
                     agent_stream_framed,
                     target_tcp_stream: None,
                     target_udp_socket: Some(target_udp_socket),
-                }));
+                }))
             }
             status => {
-                return Err(PpaassProxyError::ReceiveInvalidAgentMessage(
+                Err(PpaassProxyError::ReceiveInvalidAgentMessage(
                     agent_message_id,
                     PpaassAgentMessagePayloadType::TcpConnect,
-                    status).into());
+                    status).into())
             }
         }
     }
