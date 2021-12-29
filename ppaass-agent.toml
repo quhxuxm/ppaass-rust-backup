@@ -1,7 +1,7 @@
 port = 10090
 user_token = "ppaass-rust"
-#proxy_addresses = ["8.214.90.87:80", "8.214.90.87:80"]
-proxy_addresses = ["127.0.0.1:9999"]
+proxy_addresses = ["8.214.90.87:80", "8.214.90.87:80"]
+#proxy_addresses = ["127.0.0.1:9999"]
 buffer_size = 1048576
 master_thread_number = 32
 worker_thread_number = 128
