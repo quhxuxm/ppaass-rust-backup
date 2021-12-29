@@ -1,4 +1,4 @@
-port = 10090
+port = 10080
 user_token = "ppaass-rust"
 proxy_addresses = ["8.214.90.87:80", "8.214.90.87:80"]
 #proxy_addresses = ["127.0.0.1:9999"]
