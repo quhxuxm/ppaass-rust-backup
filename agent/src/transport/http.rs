@@ -80,7 +80,7 @@ impl Transport for HttpTransport {
                 self.relay(init_result).await?;
                 Ok(())
             }
-        }
+        };
     }
 
     fn take_snapshot(&self) -> TransportSnapshot {
@@ -365,6 +365,8 @@ impl HttpTransport {
         let (mut client_tcp_stream_read, mut client_tcp_stream_write) = client_tcp_stream.into_split();
         let transport_id_for_proxy_to_client_relay = self.id.clone();
         let transport_id_for_client_to_proxy_relay = self.id.clone();
+        let connect_message_id_for_client_to_proxy_relay = connect_message_id.clone();
+        let connect_message_id_for_proxy_to_client_relay = connect_message_id.clone();
         let client_to_proxy_relay = tokio::spawn(async move {
             let mut client_read_bytes = 0;
             let mut proxy_write_bytes = 0;
@@ -410,7 +412,7 @@ impl HttpTransport {
                                 read_buf,
                             );
                             let connection_close_message = PpaassMessage::new(
-                                "".to_string(),
+                                connect_message_id_for_client_to_proxy_relay.clone(),
                                 user_token.clone(),
                                 generate_uuid().into_bytes(),
                                 PpaassMessagePayloadEncryptionType::random(),
@@ -437,7 +439,7 @@ impl HttpTransport {
                     read_buf,
                 );
                 let data_message = PpaassMessage::new(
-                    "".to_string(),
+                    connect_message_id_for_client_to_proxy_relay.clone(),
                     user_token.clone(),
                     generate_uuid().into_bytes(),
                     PpaassMessagePayloadEncryptionType::random(),
