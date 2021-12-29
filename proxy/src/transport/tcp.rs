@@ -215,8 +215,8 @@ impl TcpTransport {
             PpaassAgentMessagePayloadType::UdpAssociate => {
                 let local_ip = IpAddr::from(LOCAL_ADDRESS);
                 let udp_address = SocketAddr::new(local_ip, 0);
-                let target_udp_socket = UdpSocket::bind(local_udp_address).await?;
-                let udp_bind_address = udp_socket.local_addr()?;
+                let target_udp_socket = UdpSocket::bind(udp_address).await?;
+                let udp_bind_address = target_udp_socket.local_addr()?;
                 let udp_bind_port = udp_bind_address.port();
                 let udp_associate_success_message_payload = PpaassProxyMessagePayload::new(
                     agent_message_source_address.clone(),
