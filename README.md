@@ -12,6 +12,16 @@ It contains 2 parts:
 Ppaass Agent is a application running inside intranet and it accept socks5 or http protocol and hand over the stream to proxy.
 The stream pass to Proxy will be encrypted with AES, Blowfish, RSA.
 
+## Support protocol of Agent
+
+The Ppaass Agent support multiple protocol to hand over the stream:
+* HTTP proxy protocol
+* Socks5 proxy protocol, currently it implement following process
+  - Authenticate
+  - Connect
+  - Relay
+  - Udp associate
+
 # Pppaass - Proxy
 
 Ppaass Proxy is a application running outside intranet and it accept the private protocol and hand over the stream to target.
