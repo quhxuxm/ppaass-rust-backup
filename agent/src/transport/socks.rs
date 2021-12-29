@@ -23,7 +23,7 @@ use crate::common::ProxyAddress;
 use crate::config::AgentConfiguration;
 use crate::error::PpaassAgentError;
 use crate::protocol::socks::{Socks5AddrType, Socks5AuthMethod, Socks5AuthResponse, Socks5ConnectRequestType, Socks5ConnectResponse, Socks5ConnectResponseStatus};
-use crate::transport::common::{Transport, TransportSnapshot, TransportStatus};
+use crate::transport::common::{Transport, TransportSnapshot, TransportSnapshotType, TransportStatus};
 
 pub(crate) struct Socks5Transport {
     id: String,
@@ -71,6 +71,7 @@ impl Transport for Socks5Transport {
     fn take_snapshot(&self) -> TransportSnapshot {
         TransportSnapshot {
             id: self.id.clone(),
+            snapshot_type: TransportSnapshotType::SOCKS5,
             status: self.status.clone(),
             client_read_bytes: self.client_read_bytes,
             client_write_bytes: self.client_write_bytes,

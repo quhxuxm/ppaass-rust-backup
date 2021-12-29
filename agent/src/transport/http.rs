@@ -26,7 +26,7 @@ use crate::codec::http::HttpCodec;
 use crate::common::ProxyAddress;
 use crate::config::AgentConfiguration;
 use crate::error::PpaassAgentError;
-use crate::transport::common::{Transport, TransportSnapshot, TransportStatus};
+use crate::transport::common::{Transport, TransportSnapshot, TransportSnapshotType, TransportStatus};
 
 type HttpFramed<'a> = Framed<&'a mut TcpStream, HttpCodec>;
 type PpaassMessageFramed = Framed<TcpStream, PpaassMessageCodec>;
@@ -86,6 +86,7 @@ impl Transport for HttpTransport {
     fn take_snapshot(&self) -> TransportSnapshot {
         TransportSnapshot {
             id: self.id.clone(),
+            snapshot_type: TransportSnapshotType::HTTP,
             status: self.status.clone(),
             client_read_bytes: self.client_read_bytes,
             client_write_bytes: self.client_write_bytes,

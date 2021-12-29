@@ -19,8 +19,14 @@ pub(crate) enum TransportStatus {
 }
 
 #[derive(Debug)]
+pub(crate) enum TransportSnapshotType{
+    HTTP, SOCKS5
+}
+
+#[derive(Debug)]
 pub(crate) struct TransportSnapshot {
     pub id: String,
+    pub snapshot_type:TransportSnapshotType,
     pub status: TransportStatus,
     pub client_read_bytes: usize,
     pub client_write_bytes: usize,
