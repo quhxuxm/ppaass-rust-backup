@@ -14,5 +14,7 @@ pub(crate) enum PpaassProxyError {
     InvalidTcpTransportStatus(String, TcpTransportStatus, TcpTransportStatus),
     #[error("Receive invalid agent message, Transport: [{0}] require status: {1:#?}, get status: {2:#?}")]
     ReceiveInvalidAgentMessage(String, PpaassAgentMessagePayloadType, PpaassAgentMessagePayloadType),
+    #[error("Unknown error happen")]
+    UnknownError,
 }
 

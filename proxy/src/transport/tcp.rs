@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::time::SystemTime;
 
 use anyhow::Context;
@@ -9,18 +9,19 @@ use futures_util::SinkExt;
 use log::{debug, error, info};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tokio::io::AsyncWriteExt;
-use tokio::net::TcpStream;
+use tokio::net::{TcpStream, UdpSocket};
 use tokio::sync::mpsc::Sender;
 use tokio_util::codec::{Decoder, Framed};
 
 use ppaass_common::agent::{PpaassAgentMessagePayload, PpaassAgentMessagePayloadSplitResult, PpaassAgentMessagePayloadType};
 use ppaass_common::codec::PpaassMessageCodec;
-use ppaass_common::common::{PpaassAddress, PpaassMessage, PpaassMessageSplitResult, PpaassProxyMessagePayload, PpaassProxyMessagePayloadType};
+use ppaass_common::common::{PpaassAddress, PpaassAddressType, PpaassMessage, PpaassMessageSplitResult, PpaassProxyMessagePayload, PpaassProxyMessagePayloadType};
 use ppaass_common::generate_uuid;
 
 use crate::error::PpaassProxyError;
 
 type AgentStreamFramed = Framed<TcpStream, PpaassMessageCodec>;
+const LOCAL_ADDRESS: [u8; 4] = [0u8; 4];
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub(crate) enum TcpTransportStatus {
@@ -63,6 +64,12 @@ pub(crate) struct TcpTransport {
     snapshot_sender: Sender<TcpTransportSnapshot>,
 }
 
+struct InitResult {
+    agent_stream_framed: AgentStreamFramed,
+    target_tcp_stream: Option<TcpStream>,
+    target_udp_socket: Option<UdpSocket>,
+}
+
 impl TcpTransport {
     pub fn new(agent_remote_address: SocketAddr, snapshot_sender: Sender<TcpTransportSnapshot>) -> Result<Self> {
         Ok(Self {
@@ -84,7 +91,7 @@ impl TcpTransport {
         })
     }
 
-    async fn publish_transport_snapshot(&self)->Result<()>{
+    async fn publish_transport_snapshot(&self) -> Result<()> {
         let transport_snapshot = self.take_snapshot();
         self.snapshot_sender.send(transport_snapshot).await?;
         Ok(())
@@ -106,13 +113,31 @@ impl TcpTransport {
         if init_result.is_none() {
             return Ok(());
         }
-        let (agent_stream_framed, target_stream) = init_result.context("Fail to unwrap ppaass message from the source edge.")?;
+        let InitResult {
+            agent_stream_framed,
+            target_tcp_stream,
+            target_udp_socket
+        } = init_result.context("Fail to unwrap init result.")?;
         // Start relay data
-        self.relay(agent_stream_framed, target_stream).await?;
+        match target_udp_socket {
+            None => {
+                match target_tcp_stream {
+                    None => {
+                        return Err(PpaassProxyError::UnknownError.into());
+                    }
+                    Some(target_tcp_stream) => {
+                        self.tcp_relay(agent_stream_framed, target_tcp_stream).await?;
+                    }
+                }
+            }
+            Some(target_udp_socket) => {
+                self.udp_relay(agent_stream_framed, target_udp_socket).await?;
+            }
+        }
         Ok(())
     }
 
-    async fn init(&mut self, mut agent_stream_framed: AgentStreamFramed) -> Result<Option<(AgentStreamFramed, TcpStream)>> {
+    async fn init(&mut self, mut agent_stream_framed: AgentStreamFramed) -> Result<Option<InitResult>> {
         if self.status != TcpTransportStatus::New {
             return Err(PpaassProxyError::InvalidTcpTransportStatus(self.id.clone(), TcpTransportStatus::New, self.status).into());
         }
@@ -138,7 +163,7 @@ impl TcpTransport {
             /// The data
             data: agent_message_data
         } = agent_message_body.split();
-        let target_stream: TcpStream;
+        let target_tcp_stream: TcpStream;
         match agent_message_payload_type {
             PpaassAgentMessagePayloadType::TcpConnect => {
                 let target_socket_address: SocketAddr = agent_message_target_address.clone().try_into()?;
@@ -161,7 +186,7 @@ impl TcpTransport {
                     agent_stream_framed.flush().await?;
                     return Err(PpaassProxyError::ConnectToTargetFail(e).into());
                 }
-                target_stream = target_stream_connect_result.unwrap();
+                target_tcp_stream = target_stream_connect_result.unwrap();
                 let tcp_connect_success_message_payload = PpaassProxyMessagePayload::new(
                     agent_message_source_address.clone(),
                     agent_message_target_address.clone(),
@@ -181,6 +206,38 @@ impl TcpTransport {
                 self.target_address = Some(agent_message_target_address.clone());
                 self.status = TcpTransportStatus::Initialized;
                 self.publish_transport_snapshot().await?;
+                return Ok(Some(InitResult {
+                    agent_stream_framed,
+                    target_tcp_stream: Some(target_tcp_stream),
+                    target_udp_socket: None,
+                }));
+            }
+            PpaassAgentMessagePayloadType::UdpAssociate => {
+                let local_ip = IpAddr::from(LOCAL_ADDRESS);
+                let udp_address = SocketAddr::new(local_ip, 0);
+                let target_udp_socket = UdpSocket::bind(local_udp_address).await?;
+                let udp_bind_address = udp_socket.local_addr()?;
+                let udp_bind_port = udp_bind_address.port();
+                let udp_associate_success_message_payload = PpaassProxyMessagePayload::new(
+                    agent_message_source_address.clone(),
+                    //For udp associate the target address is useless, just return a fake one
+                    PpaassAddress::new(vec![0, 0, 0, 0], 0, PpaassAddressType::IpV4),
+                    PpaassProxyMessagePayloadType::UdpAssociateSuccess,
+                    vec![],
+                );
+                let udp_associate_success_message = PpaassMessage::new_with_random_encryption_type(
+                    agent_message_id.clone(),
+                    user_token.clone(),
+                    generate_uuid().as_bytes().to_vec(),
+                    udp_associate_success_message_payload.into(),
+                );
+                agent_stream_framed.send(udp_associate_success_message).await?;
+                agent_stream_framed.flush().await?;
+                return Ok(Some(InitResult {
+                    agent_stream_framed,
+                    target_tcp_stream: None,
+                    target_udp_socket: Some(target_udp_socket),
+                }));
             }
             status => {
                 return Err(PpaassProxyError::ReceiveInvalidAgentMessage(
@@ -189,10 +246,11 @@ impl TcpTransport {
                     status).into());
             }
         }
-        Ok(Some((agent_stream_framed, target_stream)))
     }
-
-    async fn relay(&mut self, mut agent_edge_framed: AgentStreamFramed, target_stream: TcpStream) -> Result<()> {
+    async fn udp_relay(&mut self, mut agent_edge_framed: AgentStreamFramed, target_udp_socket: UdpSocket) -> Result<()> {
+        Ok(())
+    }
+    async fn tcp_relay(&mut self, mut agent_edge_framed: AgentStreamFramed, target_tcp_stream: TcpStream) -> Result<()> {
         if self.status != TcpTransportStatus::Initialized {
             return Err(PpaassProxyError::InvalidTcpTransportStatus(self.id.clone(), TcpTransportStatus::Initialized, self.status).into());
         }
@@ -204,7 +262,7 @@ impl TcpTransport {
         let source_address_for_target_to_proxy_relay = source_address.clone();
         let target_address = self.target_address.clone().take().context("Can not unwrap target edge address")?;
         let target_address_for_target_to_proxy_relay = target_address.clone();
-        let (mut target_read, mut target_write) = target_stream.into_split();
+        let (mut target_read, mut target_write) = target_tcp_stream.into_split();
         let (mut agent_write_part, mut agent_read_part) = agent_edge_framed.split();
         let transport_id_for_target_to_proxy_relay = self.id.clone();
         let transport_id_for_proxy_to_target_relay = self.id.clone();
