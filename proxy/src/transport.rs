@@ -1,4 +1,5 @@
 use std::net::{IpAddr, SocketAddr};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use anyhow::Context;
@@ -254,9 +255,16 @@ impl Transport {
         }
         let transport_id_for_target_to_proxy_relay = self.id.clone();
         let transport_id_for_proxy_to_target_relay = self.id.clone();
+        let user_token = self.user_token.clone().take().context("Can not unwrap user token.")?;
+        let user_token_for_target_to_proxy_relay = user_token.clone();
         let (mut agent_write_part, mut agent_read_part) = agent_stream_framed.split();
+       let target_udp_socket=Arc::new(target_udp_socket);
+      let target_udp_socket_for_proxy_to_target_relay=  target_udp_socket.clone();
+      let target_udp_socket_for_target_to_proxy_relay=  target_udp_socket.clone();
         let proxy_to_target_relay = tokio::spawn(async move {
             loop {
+                let mut proxy_to_target_write_bytes = 0usize;
+                let mut agent_to_proxy_read_bytes = 0usize;
                 let agent_udp_data_message = agent_read_part.next().await;
                 if agent_udp_data_message.is_none() {
                     info!("Nothing to read from agent, tcp transport: [{}]", transport_id_for_proxy_to_target_relay);
@@ -268,9 +276,75 @@ impl Transport {
                     return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
                 }
                 let agent_udp_data_message = agent_udp_data_message.unwrap();
+                let PpaassMessageSplitResult {
+                    id: agent_message_id,
+                    payload: agent_message_payload_bytes,
+                    ..
+                } = agent_udp_data_message.split();
+                let agent_message_payload: Result<PpaassAgentMessagePayload, _> = agent_message_payload_bytes.try_into();
+                if let Err(e) = agent_message_payload {
+                    error!("Fail to decode agent message payload because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
+                    return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
+                }
+                let agent_message_payload = agent_message_payload.unwrap();
+                let PpaassAgentMessagePayloadSplitResult {
+                    payload_type: agent_message_payload_type,
+                    data: agent_message_payload_data,
+                    source_address: agent_message_source_address,
+                    target_address: agent_message_target_address
+                } = agent_message_payload.split();
+                match agent_message_payload_type {
+                    PpaassAgentMessagePayloadType::UdpData => {
+                        let target_udp_socket_address: Result<SocketAddr, _> = agent_message_target_address.try_into();
+                        if let Err(e) = target_udp_socket_address {
+                            error!("Fail to parse target udp socket address because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
+                            return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
+                        }
+                        let target_udp_socket_address = target_udp_socket_address.unwrap();
+                        if let Err(e) = target_udp_socket_for_proxy_to_target_relay.send_to(agent_message_payload_data.as_slice(), target_udp_socket_address).await {
+                            error!("Fail to send udp data to target because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
+                            return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
+                        }
+                    }
+                    _ => {
+                        error!("");
+                        return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
+                    }
+                }
             }
         });
-        let target_to_proxy_relay = tokio::spawn(async move {});
+        let target_to_proxy_relay = tokio::spawn(async move {
+            loop {
+                let mut buf = [0u8; 65536];
+                let udp_relay_recv_result = target_udp_socket_for_target_to_proxy_relay.recv_from(&mut buf).await;
+                if let Err(e) = udp_relay_recv_result {
+                    return;
+                }
+                let udp_relay_recv_result = udp_relay_recv_result.unwrap();
+                let (data_size, target_origin_address) = udp_relay_recv_result;
+                let udp_data_diagram = buf[..data_size].to_vec();
+                let target_address: PpaassAddress = target_origin_address.into();
+                let udp_data_message_payload = PpaassProxyMessagePayload::new(
+                    //For udp data the source address is useless, just return a fake one
+                    PpaassAddress::new(vec![0, 0, 0, 0], 0, PpaassAddressType::IpV4),
+                    target_address,
+                    PpaassProxyMessagePayloadType::UdpData,
+                    udp_data_diagram,
+                );
+                let udp_data_message = PpaassMessage::new_with_random_encryption_type(
+                    "".to_string(),
+                    user_token_for_target_to_proxy_relay.clone(),
+                    generate_uuid().as_bytes().to_vec(),
+                    udp_data_message_payload.into(),
+                );
+                if let Err(e) = agent_write_part.send(udp_data_message).await {
+                    return;
+                }
+                if let Err(e) = agent_write_part.flush().await {
+                    return;
+                }
+            }
+        });
         proxy_to_target_relay.await?;
         target_to_proxy_relay.await?;
         Ok(())

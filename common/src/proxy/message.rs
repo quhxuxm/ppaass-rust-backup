@@ -12,6 +12,7 @@ pub enum PpaassProxyMessagePayloadType {
     TcpDataRelayFail,
     UdpAssociateSuccess,
     UdpAssociateFail,
+    UdpData,
     UdpDataRelayFail,
 }
 
@@ -26,6 +27,7 @@ impl From<PpaassProxyMessagePayloadType> for u8 {
             PpaassProxyMessagePayloadType::UdpAssociateSuccess => 21,
             PpaassProxyMessagePayloadType::UdpAssociateFail => 22,
             PpaassProxyMessagePayloadType::UdpDataRelayFail => 23,
+            PpaassProxyMessagePayloadType::UdpData => 24,
         }
     }
 }
@@ -43,6 +45,7 @@ impl TryFrom<u8> for PpaassProxyMessagePayloadType {
             21 => Ok(PpaassProxyMessagePayloadType::UdpAssociateSuccess),
             22 => Ok(PpaassProxyMessagePayloadType::UdpAssociateFail),
             23 => Ok(PpaassProxyMessagePayloadType::UdpDataRelayFail),
+            24 => Ok(PpaassProxyMessagePayloadType::UdpData),
             _ => Err(PpaassCommonError::FailToParsePpaassProxyMessagePayloadType(value))
         }
     }
