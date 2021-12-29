@@ -19,8 +19,9 @@ The Ppaass Agent support multiple protocol to hand over the stream:
 * Socks5 proxy protocol, currently it implement following process
   - Authenticate
   - Connect
-  - Relay
+  - Tcp relay
   - Udp associate
+  - Udp relay
 
 # Pppaass - Proxy
 
