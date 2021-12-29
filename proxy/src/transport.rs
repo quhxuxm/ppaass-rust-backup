@@ -233,6 +233,7 @@ impl Transport {
                 );
                 agent_stream_framed.send(udp_associate_success_message).await?;
                 agent_stream_framed.flush().await?;
+                self.status = TransportStatus::Initialized;
                 return Ok(Some(InitResult {
                     agent_stream_framed,
                     target_tcp_stream: None,
@@ -249,7 +250,7 @@ impl Transport {
     }
     async fn udp_relay(&mut self, mut agent_edge_framed: AgentStreamFramed, target_udp_socket: UdpSocket) -> Result<()> {
         if self.status != TransportStatus::Initialized {
-            return Err(PpaassProxyError::InvalidTcpTransportStatus(self.id.clone(), TransportStatus::Initialized, self.status).into());
+            return Err(PpaassProxyError::InvalidUdpTransportStatus(self.id.clone(), TransportStatus::Initialized, self.status).into());
         }
         let proxy_to_target_relay = tokio::spawn(async move {});
         let target_to_proxy_relay = tokio::spawn(async move {});
