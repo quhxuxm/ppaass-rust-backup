@@ -1,6 +1,6 @@
 # What is Ppaass?
 
-Ppaass is a intranet penetration tool implemented based on Rust.
+Ppaass is a intranet penetration tool implemented based on Rust + Tokio.
 
 It contains 2 parts: 
 
