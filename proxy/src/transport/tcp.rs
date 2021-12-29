@@ -84,6 +84,12 @@ impl TcpTransport {
         })
     }
 
+    async fn publish_transport_snapshot(&self)->Result<()>{
+        let transport_snapshot = self.take_snapshot();
+        self.snapshot_sender.send(transport_snapshot).await?;
+        Ok(())
+    }
+
     /// # Run the transport step by step:
     /// New->Initialized->Relaying->Closing->Closed
     /// * New status: A transport is created with a source edge assigned.
@@ -92,8 +98,7 @@ impl TcpTransport {
     /// * Closing status: A transport is closing.
     /// * Closed status: A transport is closed.
     pub async fn start(&mut self, agent_stream: TcpStream, rsa_public_key: impl Into<String>, rsa_private_key: impl Into<String>) -> Result<()> {
-        let transport_snapshot = self.take_snapshot();
-        self.snapshot_sender.send(transport_snapshot).await?;
+        self.publish_transport_snapshot().await?;
         let ppaass_message_codec = PpaassMessageCodec::new(rsa_public_key.into(), rsa_private_key.into());
         let agent_stream_framed = ppaass_message_codec.framed(agent_stream);
         // Initialize the target edge stream
@@ -175,8 +180,7 @@ impl TcpTransport {
                 self.source_address = Some(agent_message_source_address.clone());
                 self.target_address = Some(agent_message_target_address.clone());
                 self.status = TcpTransportStatus::Initialized;
-                let transport_snapshot = self.take_snapshot();
-                self.snapshot_sender.send(transport_snapshot).await?;
+                self.publish_transport_snapshot().await?;
             }
             status => {
                 return Err(PpaassProxyError::ReceiveInvalidAgentMessage(
@@ -193,8 +197,7 @@ impl TcpTransport {
             return Err(PpaassProxyError::InvalidTcpTransportStatus(self.id.clone(), TcpTransportStatus::Initialized, self.status).into());
         }
         self.status = TcpTransportStatus::Relaying;
-        let transport_snapshot = self.take_snapshot();
-        self.snapshot_sender.send(transport_snapshot).await?;
+        self.publish_transport_snapshot().await?;
         let user_token = self.user_token.clone().take().context("Can not unwrap user token.")?;
         let user_token_for_target_to_proxy_relay = user_token.clone();
         let source_address = self.source_address.clone().take().context("Can not unwrap source edge address")?;
@@ -336,8 +339,7 @@ impl TcpTransport {
         let (agent_to_proxy_read_bytes, proxy_to_target_write_bytes) = proxy_to_target_relay.await?;
         self.agent_read_bytes += agent_to_proxy_read_bytes;
         self.target_write_bytes += proxy_to_target_write_bytes;
-        let transport_snapshot = self.take_snapshot();
-        self.snapshot_sender.send(transport_snapshot).await?;
+        self.publish_transport_snapshot().await?;
         Ok(())
     }
 
@@ -346,8 +348,7 @@ impl TcpTransport {
             Some(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?.as_millis())
         };
         self.status = TcpTransportStatus::Closed;
-        let transport_snapshot = self.take_snapshot();
-        self.snapshot_sender.send(transport_snapshot).await?;
+        self.publish_transport_snapshot().await?;
         Ok(())
     }
 
