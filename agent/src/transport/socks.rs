@@ -486,11 +486,17 @@ impl Socks5Transport {
             source_address,
             target_address,
             client_tcp_stream,
-            client_udp_socket
+            mut client_udp_socket
         } = init_result;
         let client_to_proxy_relay = tokio::spawn(async move {
             loop {
                 let mut buf = [0u8; 65536];
+                let client_udp_socket = client_udp_socket.take().context("Fail to unwrap client udp socket");
+                if let Err(e) = client_udp_socket {
+                    return;
+                }
+                let client_udp_socket=client_udp_socket.unwrap();
+
             }
         });
         let proxy_to_client_relay = tokio::spawn(async move {
