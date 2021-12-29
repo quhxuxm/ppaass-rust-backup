@@ -230,7 +230,7 @@ impl HttpTransport {
                             None => {
                                 error!("None of the proxy address is connectable, http transport:[{}]", transport_id);
                                 Self::send_error_to_client(client_stream_framed).await?;
-                                return Err(PpaassAgentError::ConnectToProxyFail.into());
+                                return Err(PpaassAgentError::FailToConnectProxy.into());
                             }
                             Some(proxy_stream) => {
                                 match http_data {
@@ -272,7 +272,7 @@ impl HttpTransport {
                     if retry_times > 2 {
                         info!("Retry 3 times to read proxy message for http transport [{}] but still fail.", transport_id);
                         Self::send_error_to_client(client_stream_framed).await?;
-                        return Err(PpaassAgentError::ConnectToProxyFail.into());
+                        return Err(PpaassAgentError::FailToConnectProxy.into());
                     }
                     retry_times += 1;
                     info!("Retry to read proxy message for http transport [{}] ...", transport_id);
@@ -283,7 +283,7 @@ impl HttpTransport {
                     match response {
                         Err(e) => {
                             Self::send_error_to_client(client_stream_framed).await?;
-                            return Err(PpaassAgentError::ConnectToProxyFail.into());
+                            return Err(PpaassAgentError::FailToConnectProxy.into());
                         }
                         Ok(r) => {
                             break r;
@@ -320,7 +320,7 @@ impl HttpTransport {
                         debug!("Http request do not need return connection established, http transport: [{}]", transport_id)
                     }
                 }
-                self.status = TransportStatus::Connected;
+                self.status = TransportStatus::TcpConnected;
                 self.source_address = Some(source_address.clone());
                 self.target_address = Some(target_address.clone());
                 return Ok(Some(InitResult {
@@ -334,7 +334,7 @@ impl HttpTransport {
             }
             PpaassProxyMessagePayloadType::TcpConnectFail => {
                 Self::send_error_to_client(client_stream_framed).await?;
-                Err(PpaassAgentError::ConnectToProxyFail.into())
+                Err(PpaassAgentError::FailToConnectProxy.into())
             }
             PpaassProxyMessagePayloadType::TcpConnectionClose => {
                 Self::send_error_to_client(client_stream_framed).await?;
@@ -342,14 +342,14 @@ impl HttpTransport {
             }
             _status => {
                 Self::send_error_to_client(client_stream_framed).await?;
-                Err(PpaassAgentError::ConnectToProxyFail.into())
+                Err(PpaassAgentError::FailToConnectProxy.into())
             }
         };
     }
 
     async fn relay(&mut self, init_result: InitResult) -> Result<()> {
-        if self.status != TransportStatus::Connected {
-            return Err(PpaassAgentError::InvalidTransportStatus(self.id.clone(), TransportStatus::Connected, self.status).into());
+        if self.status != TransportStatus::TcpConnected {
+            return Err(PpaassAgentError::InvalidTransportStatus(self.id.clone(), TransportStatus::TcpConnected, self.status).into());
         }
         let InitResult {
             http_init_message,

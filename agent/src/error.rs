@@ -2,8 +2,10 @@ use crate::transport::common::TransportStatus;
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum PpaassAgentError {
-    #[error("Connect to target fail")]
-    ConnectToProxyFail,
+    #[error("Fail to connect proxy")]
+    FailToConnectProxy,
+    #[error("Fail to associate udp on proxy")]
+    FailToAssociateUdpOnProxy,
     #[error("Fail to codec http protocol")]
     HttpCodecError(#[from] bytecodec::Error),
     #[error("Fail to parse proxy address: {0}")]
@@ -20,4 +22,6 @@ pub(crate) enum PpaassAgentError {
     InvalidTransportStatus(String, TransportStatus, TransportStatus),
     #[error("Io error happen")]
     IoError(#[from] std::io::Error),
+    #[error("Unsupported socks 5 command")]
+    UnsupportedSocks5Command,
 }

@@ -13,9 +13,10 @@ use crate::error::PpaassAgentError;
 pub(crate) enum TransportStatus {
     New,
     Authenticated,
-    Connected,
+    TcpConnected,
     Relaying,
     Closed,
+    UdpAssociated
 }
 
 #[derive(Debug)]
