@@ -14,6 +14,7 @@ use tokio::runtime::Runtime;
 use crate::config::AgentConfiguration;
 use crate::transport::common::{Transport, TransportSnapshot, TransportStatus};
 use crate::transport::http::HttpTransport;
+use crate::transport::socks::Socks5Transport;
 
 const CONFIG_FILE_PATH: &str = "ppaass-agent.toml";
 pub const LOCAL_ADDRESS: [u8; 4] = [0u8; 4];
@@ -152,7 +153,7 @@ impl Server {
                 let transport_info_sender = transport_info_sender.clone();
                 let agent_private_key = agent_private_key.clone();
                 let proxy_public_key = proxy_public_key.clone();
-                let config=config.clone();
+                let config = config.clone();
                 worker_runtime.spawn(async move {
                     let mut protocol_buf: [u8; 1] = [0; 1];
                     let read_result = client_stream.peek(&mut protocol_buf).await;
@@ -169,7 +170,23 @@ impl Server {
                         return;
                     }
                     if protocol_buf[0] == SOCKS5_VERSION {
-                        error!("Do not support socks 5 connection, client: {}", client_remote_addr);
+                        let socks5_transport = Socks5Transport::new(config.clone(), transport_info_sender.clone());
+                        if let Err(e) = socks5_transport {
+                            error!("Fail to create socks5 transport because of error, error: {:#?}",e );
+                            return;
+                        }
+                        let mut socks5_transport = socks5_transport.unwrap();
+                        let socks5_transport_id = socks5_transport.id();
+                        info!("Receive a client stream from: [{}], assign it to socks5 transport: [{}].", client_remote_addr, socks5_transport_id);
+                        if let Err(e) = socks5_transport.start(client_stream, proxy_public_key, agent_private_key).await {
+                            error!("Fail to start agent socks5 transport because of error, transport:[{}], agent address:[{}], error: {:#?}",socks5_transport_id,
+                            client_remote_addr,e);
+                        }
+                        if let Err(e) = socks5_transport.close().await {
+                            error!("Fail to close agent socks5 transport because of error, transport:[{}], agent address:[{}], error: {:#?}",socks5_transport_id,
+                            client_remote_addr,e);
+                        }
+                        info!("Graceful close agent socks5 transport: [{}]", socks5_transport_id);
                         return;
                     }
                     let http_transport = HttpTransport::new(config.clone(), transport_info_sender.clone());

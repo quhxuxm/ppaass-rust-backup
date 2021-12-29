@@ -71,30 +71,16 @@ struct InitResult {
 impl Transport for HttpTransport {
     async fn start(&mut self, client_tcp_stream: TcpStream, rsa_public_key: String,
         rsa_private_key: String) -> Result<()> {
-        let init_result = self.init(client_tcp_stream, rsa_public_key, rsa_private_key).await;
-        match init_result {
-            Err(e) => {
-                error!("Fail to do init for http transport: [{}] because of error: {:#?}", self.id, e);
-                return Err(PpaassAgentError::ConnectToProxyFail.into());
+        let init_result = self.init(client_tcp_stream, rsa_public_key, rsa_private_key).await?;
+        return match init_result {
+            None => {
+                Ok(())
             }
-            Ok(init_result) => {
-                match init_result {
-                    None => {
-                        info!("Nothing read from init  for http transport: [{}]", self.id
-                        );
-                        return Ok(());
-                    }
-                    Some(r) => {
-                        self.relay(r).await?;
-                    }
-                }
+            Some(init_result) => {
+                self.relay(init_result).await?;
+                Ok(())
             }
         }
-        Ok(())
-    }
-
-    fn id(&self) -> String {
-        self.id.clone()
     }
 
     fn take_snapshot(&self) -> TransportSnapshot {
@@ -112,6 +98,10 @@ impl Transport for HttpTransport {
             source_address: self.source_address.clone(),
             target_address: self.target_address.clone(),
         }
+    }
+
+    fn id(&self) -> String {
+        self.id.clone()
     }
 
     async fn close(&mut self) -> Result<()> {
@@ -340,6 +330,14 @@ impl HttpTransport {
                     source_address,
                     target_address,
                 }));
+            }
+            PpaassProxyMessagePayloadType::TcpConnectFail => {
+                Self::send_error_to_client(client_stream_framed).await?;
+                Err(PpaassAgentError::ConnectToProxyFail.into())
+            }
+            PpaassProxyMessagePayloadType::TcpConnectionClose => {
+                Self::send_error_to_client(client_stream_framed).await?;
+                return Ok(None);
             }
             _status => {
                 Self::send_error_to_client(client_stream_framed).await?;

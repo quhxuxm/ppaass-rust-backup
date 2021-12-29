@@ -85,7 +85,32 @@ impl TryFrom<String> for PpaassAddress {
         })
     }
 }
-
+impl From<SocketAddr> for PpaassAddress {
+    fn from(value: SocketAddr) -> Self {
+        match value {
+            SocketAddr::V4(socket_addr) => {
+                let address_type = PpaassAddressType::IpV4;
+                let host = socket_addr.ip().octets().to_vec();
+                let port = socket_addr.port();
+                Self {
+                    address_type,
+                    host,
+                    port,
+                }
+            }
+            SocketAddr::V6(socket_addr) => {
+                let address_type = PpaassAddressType::IpV6;
+                let host = socket_addr.ip().octets().to_vec();
+                let port = socket_addr.port();
+                Self {
+                    address_type,
+                    host,
+                    port,
+                }
+            }
+        }
+    }
+}
 impl TryFrom<PpaassAddress> for SocketAddr {
     type Error = PpaassCommonError;
 
