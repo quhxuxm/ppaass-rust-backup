@@ -246,19 +246,36 @@ impl Transport {
                     PpaassAgentMessagePayloadType::TcpConnect,
                     status).into())
             }
-        }
+        };
     }
-    async fn udp_relay(&mut self, mut agent_edge_framed: AgentStreamFramed, target_udp_socket: UdpSocket) -> Result<()> {
+    async fn udp_relay(&mut self, mut agent_stream_framed: AgentStreamFramed, target_udp_socket: UdpSocket) -> Result<()> {
         if self.status != TransportStatus::Initialized {
             return Err(PpaassProxyError::InvalidUdpTransportStatus(self.id.clone(), TransportStatus::Initialized, self.status).into());
         }
-        let proxy_to_target_relay = tokio::spawn(async move {});
+        let transport_id_for_target_to_proxy_relay = self.id.clone();
+        let transport_id_for_proxy_to_target_relay = self.id.clone();
+        let (mut agent_write_part, mut agent_read_part) = agent_stream_framed.split();
+        let proxy_to_target_relay = tokio::spawn(async move {
+            loop {
+                let agent_udp_data_message = agent_read_part.next().await;
+                if agent_udp_data_message.is_none() {
+                    info!("Nothing to read from agent, tcp transport: [{}]", transport_id_for_proxy_to_target_relay);
+                    return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
+                }
+                let agent_udp_data_message = agent_udp_data_message.unwrap();
+                if let Err(e) = agent_udp_data_message {
+                    error!("Fail to decode agent message because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
+                    return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
+                }
+                let agent_udp_data_message = agent_udp_data_message.unwrap();
+            }
+        });
         let target_to_proxy_relay = tokio::spawn(async move {});
         proxy_to_target_relay.await?;
         target_to_proxy_relay.await?;
         Ok(())
     }
-    async fn tcp_relay(&mut self, mut agent_edge_framed: AgentStreamFramed, target_tcp_stream: TcpStream) -> Result<()> {
+    async fn tcp_relay(&mut self, mut agent_stream_framed: AgentStreamFramed, target_tcp_stream: TcpStream) -> Result<()> {
         if self.status != TransportStatus::Initialized {
             return Err(PpaassProxyError::InvalidTcpTransportStatus(self.id.clone(), TransportStatus::Initialized, self.status).into());
         }
@@ -271,7 +288,7 @@ impl Transport {
         let target_address = self.target_address.clone().take().context("Can not unwrap target edge address")?;
         let target_address_for_target_to_proxy_relay = target_address.clone();
         let (mut target_read, mut target_write) = target_tcp_stream.into_split();
-        let (mut agent_write_part, mut agent_read_part) = agent_edge_framed.split();
+        let (mut agent_write_part, mut agent_read_part) = agent_stream_framed.split();
         let transport_id_for_target_to_proxy_relay = self.id.clone();
         let transport_id_for_proxy_to_target_relay = self.id.clone();
         let proxy_to_target_relay = tokio::spawn(async move {
