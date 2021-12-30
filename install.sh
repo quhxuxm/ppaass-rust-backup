@@ -16,7 +16,7 @@ sudo curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 # sudo tar -zxf openjdk-15.0.2_linux-x64_bin.tar.gz -C /opt/java/
 # sudo update-alternatives --install /usr/bin/java java /opt/java/jdk-15.0.2/bin/java 100
 # sudo update-alternatives --config java
-sudo rustup update
+rustup update
 #Create swap file
 #sudo swapoff /swapfile
 #sudo fallocate -l 4G /swapfile
