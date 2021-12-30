@@ -252,6 +252,9 @@ impl Transport {
                     .send(udp_associate_success_message)
                     .await?;
                 agent_stream_framed.flush().await?;
+                self.user_token = Some(user_token.clone());
+                self.source_address = Some(agent_message_source_address.clone());
+                self.target_address = Some(agent_message_target_address.clone());
                 self.status = TransportStatus::Initialized;
                 Ok(Some(InitResult {
                     agent_stream_framed,
@@ -284,9 +287,9 @@ impl Transport {
         let transport_id_for_proxy_to_target_relay = self.id.clone();
         let user_token = self
             .user_token
-            .clone()
-            .take()
-            .context("Can not unwrap user token.")?;
+            .as_ref()
+            .context("Fail to unwrap user token")?
+            .clone();
         let user_token_for_target_to_proxy_relay = user_token.clone();
         let (mut agent_write_part, mut agent_read_part) = agent_stream_framed.split();
         let target_udp_socket = Arc::new(target_udp_socket);
@@ -294,20 +297,18 @@ impl Transport {
         let target_udp_socket_for_target_to_proxy_relay = target_udp_socket.clone();
         let proxy_to_target_relay = tokio::spawn(async move {
             loop {
-                let mut proxy_to_target_write_bytes = 0usize;
-                let mut agent_to_proxy_read_bytes = 0usize;
                 let agent_udp_data_message = agent_read_part.next().await;
                 if agent_udp_data_message.is_none() {
                     info!(
                         "Nothing to read from agent, tcp transport: [{}]",
                         transport_id_for_proxy_to_target_relay
                     );
-                    return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
+                    continue;
                 }
                 let agent_udp_data_message = agent_udp_data_message.unwrap();
                 if let Err(e) = agent_udp_data_message {
                     error!("Fail to decode agent message because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
-                    return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
+                    continue;
                 }
                 let agent_udp_data_message = agent_udp_data_message.unwrap();
                 let PpaassMessageSplitResult {
@@ -319,7 +320,7 @@ impl Transport {
                     agent_message_payload_bytes.try_into();
                 if let Err(e) = agent_message_payload {
                     error!("Fail to decode agent message payload because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
-                    return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
+                    continue;
                 }
                 let agent_message_payload = agent_message_payload.unwrap();
                 let PpaassAgentMessagePayloadSplitResult {
@@ -334,7 +335,7 @@ impl Transport {
                             agent_message_target_address.try_into();
                         if let Err(e) = target_udp_socket_address {
                             error!("Fail to parse target udp socket address because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
-                            return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
+                            continue;
                         }
                         let target_udp_socket_address = target_udp_socket_address.unwrap();
                         if let Err(e) = target_udp_socket_for_proxy_to_target_relay
@@ -345,12 +346,12 @@ impl Transport {
                             .await
                         {
                             error!("Fail to send udp data to target because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
-                            return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
+                            continue;
                         }
                     }
                     _ => {
-                        error!("");
-                        return (agent_to_proxy_read_bytes, proxy_to_target_write_bytes);
+                        error!("Fail to send udp data to target because of invalid message payload type, transport: [{}]",transport_id_for_proxy_to_target_relay);
+                        continue;
                     }
                 }
             }
@@ -362,7 +363,8 @@ impl Transport {
                     .recv_from(&mut buf)
                     .await;
                 if let Err(e) = udp_relay_recv_result {
-                    return;
+                    error!("Fail to receive udp message from target because of error, transport: [{}], error: {:#?}", transport_id_for_target_to_proxy_relay, e);
+                    continue;
                 }
                 let udp_relay_recv_result = udp_relay_recv_result.unwrap();
                 let (data_size, target_origin_address) = udp_relay_recv_result;
@@ -382,10 +384,10 @@ impl Transport {
                     udp_data_message_payload.into(),
                 );
                 if let Err(e) = agent_write_part.send(udp_data_message).await {
-                    return;
+                    continue;
                 }
                 if let Err(e) = agent_write_part.flush().await {
-                    return;
+                    continue;
                 }
             }
         });
@@ -410,9 +412,9 @@ impl Transport {
         self.publish_transport_snapshot().await?;
         let user_token = self
             .user_token
-            .clone()
-            .take()
-            .context("Can not unwrap user token.")?;
+            .as_ref()
+            .context("Fail to unwrap user token")?
+            .clone();
         let user_token_for_target_to_proxy_relay = user_token.clone();
         let source_address = self
             .source_address

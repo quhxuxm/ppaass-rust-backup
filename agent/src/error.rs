@@ -6,6 +6,8 @@ pub(crate) enum PpaassAgentError {
     FailToConnectProxy,
     #[error("Fail to associate udp on proxy")]
     FailToAssociateUdpOnProxy,
+    #[error("Fail to associate udp on agent")]
+    FailToAssociateUdpOnAgent,
     #[error("Fail to codec http protocol")]
     HttpCodecError(#[from] bytecodec::Error),
     #[error("Fail to parse proxy address: {0}")]

@@ -56,7 +56,7 @@ type PpaassMessageFramed = Framed<TcpStream, PpaassMessageCodec>;
 type Socks5ConnectFramed<'a> = Framed<&'a mut TcpStream, Socks5ConnectCodec>;
 struct InitResult {
     client_tcp_stream: Option<TcpStream>,
-    client_udp_socket: Option<UdpSocket>,
+    client_udp_socket: Option<Arc<UdpSocket>>,
     proxy_framed: PpaassMessageFramed,
     connect_message_id: String,
     source_address: PpaassAddress,
@@ -515,42 +515,38 @@ impl Socks5Transport {
                                                     .into())
                                             }
                                             PpaassProxyMessagePayloadType::UdpAssociateSuccess => {
-                                                let agent_udp_socket_to_receive_client_message =
-                                                    UdpSocket::bind(SocketAddr::new(
-                                                        IpAddr::from(LOCAL_ADDRESS),
-                                                        0,
-                                                    ))
-                                                    .await;
-                                                match agent_udp_socket_to_receive_client_message {
+                                                let client_udp_socket = UdpSocket::bind(
+                                                    SocketAddr::new(IpAddr::from(LOCAL_ADDRESS), 0),
+                                                )
+                                                .await;
+                                                match client_udp_socket {
                                                     Err(e) => {
                                                         Self::send_socks5_failure_response(
                                                             &mut client_tcp_framed,
                                                         )
                                                         .await;
-                                                        Err(PpaassAgentError::FailToAssociateUdpOnProxy.into())
+                                                        Err(PpaassAgentError::FailToAssociateUdpOnAgent.into())
                                                     }
-                                                    Ok(
-                                                        agent_udp_socket_to_receive_client_message,
-                                                    ) => {
-                                                        let agent_udp_socket_bind_address = agent_udp_socket_to_receive_client_message.local_addr()?;
+                                                    Ok(client_udp_socket) => {
+                                                        let agent_udp_socket_bind_address =
+                                                            client_udp_socket.local_addr()?;
                                                         let socks5_udp_associate_success_response = Socks5ConnectResponse::new(
                                                             Socks5ConnectResponseStatus::Succeeded,
                                                             Socks5AddrType::IpV4,
                                                             LOCAL_ADDRESS.to_vec(),
                                                             agent_udp_socket_bind_address.port(),
                                                         );
-                                                        let client_udp_socket_address: SocketAddr =
-                                                            udp_source_address.clone().try_into()?;
-                                                        agent_udp_socket_to_receive_client_message
-                                                            .connect(client_udp_socket_address)
-                                                            .await?;
                                                         client_tcp_framed.send(socks5_udp_associate_success_response).await?;
                                                         client_tcp_framed.flush().await?;
                                                         self.status =
                                                             TransportStatus::UdpAssociated;
                                                         Ok(Some(InitResult {
-                                                            client_tcp_stream: Some(client_tcp_stream),
-                                                            client_udp_socket: Some(agent_udp_socket_to_receive_client_message),
+                                                            client_tcp_stream: Some(
+                                                                client_tcp_stream,
+                                                            ),
+                                                            client_udp_socket: Some(Arc::new(
+                                                                client_udp_socket,
+                                                            )),
                                                             connect_message_id: proxy_message_id,
                                                             proxy_framed,
                                                             source_address: udp_source_address,
@@ -657,17 +653,15 @@ impl Socks5Transport {
             source_address,
             target_address,
             client_tcp_stream,
-            mut client_udp_socket,
+            client_udp_socket: mut client_udp_socket,
         } = init_result;
         let transport_id_for_client_to_proxy_relay = self.id.clone();
         let transport_id_for_proxy_to_client_relay = self.id.clone();
         let user_token_for_client_to_proxy_relay = self.user_token.clone();
         let user_token_for_proxy_to_client_relay = self.user_token.clone();
         let (mut proxy_framed_write, mut proxy_framed_read) = proxy_framed.split();
-        let client_udp_socket = match client_udp_socket.take() {
-            None => return Err(PpaassAgentError::FailToAssociateUdpOnProxy.into()),
-            Some(client_udp_socket) => Arc::new(client_udp_socket),
-        };
+        let client_udp_socket =
+            client_udp_socket.context("Can not unwrap client udp socket to send message")?;
         let client_udp_socket_for_client_to_proxy_relay = client_udp_socket.clone();
         let client_udp_socket_for_proxy_to_client_relay = client_udp_socket.clone();
         let client_to_proxy_relay = tokio::spawn(async move {
@@ -697,9 +691,27 @@ impl Socks5Transport {
                     }
                 };
                 let source_address_for_proxy: PpaassAddress = client_udp_message_address.into();
+                let udp_message_target_address: PpaassAddress =
+                    match socks5_udp_data_request.addr_type() {
+                        Socks5AddrType::IpV4 => PpaassAddress::new(
+                            socks5_udp_data_request.dst_addr().to_vec(),
+                            socks5_udp_data_request.dst_port(),
+                            PpaassAddressType::IpV4,
+                        ),
+                        Socks5AddrType::IpV6 => PpaassAddress::new(
+                            socks5_udp_data_request.dst_addr().to_vec(),
+                            socks5_udp_data_request.dst_port(),
+                            PpaassAddressType::IpV6,
+                        ),
+                        Socks5AddrType::Domain => PpaassAddress::new(
+                            socks5_udp_data_request.dst_addr().to_vec(),
+                            socks5_udp_data_request.dst_port(),
+                            PpaassAddressType::Domain,
+                        ),
+                    };
                 let udp_data_message_body = PpaassAgentMessagePayload::new(
                     source_address_for_proxy,
-                    target_address.clone(),
+                    udp_message_target_address,
                     PpaassAgentMessagePayloadType::UdpData,
                     socks5_udp_data_request.data().to_vec(),
                 );
