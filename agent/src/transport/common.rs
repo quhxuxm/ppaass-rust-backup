@@ -3,7 +3,9 @@ use std::net::SocketAddr;
 use anyhow::Result;
 use async_trait::async_trait;
 use tokio::net::TcpStream;
+use tokio_util::codec::{Decoder, Framed};
 
+use ppaass_common::codec::PpaassMessageCodec;
 use ppaass_common::common::PpaassAddress;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -44,6 +46,16 @@ pub(crate) trait Transport
 where
     Self: Send,
 {
+    fn create_proxy_framed(
+        rsa_public_key: String,
+        rsa_private_key: String,
+        proxy_stream: TcpStream,
+    ) -> Framed<TcpStream, PpaassMessageCodec> {
+        let ppaass_message_codec = PpaassMessageCodec::new(rsa_public_key, rsa_private_key);
+        let mut proxy_framed = ppaass_message_codec.framed(proxy_stream);
+        proxy_framed
+    }
+
     async fn start(
         &mut self,
         client_tcp_stream: TcpStream,
