@@ -24,7 +24,6 @@ pub struct Server {
     master_runtime: Runtime,
     worker_runtime: Arc<Runtime>,
     configuration: Arc<ProxyConfiguration>,
-    transports: Arc<RwLock<HashMap<String, TransportSnapshot>>>,
 }
 
 impl Server {
@@ -67,7 +66,6 @@ impl Server {
             master_runtime,
             worker_runtime: Arc::new(worker_runtime),
             configuration: Arc::new(proxy_server_config),
-            transports: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
@@ -77,7 +75,6 @@ impl Server {
         let proxy_server_config = self.configuration.clone();
         let worker_runtime = self.worker_runtime.clone();
         let (transport_info_sender, mut transport_info_receiver) = tokio::sync::mpsc::channel::<TransportSnapshot>(32);
-        let transports = self.transports.clone();
         self.master_runtime.spawn(async move {
             loop {
                 let transport_snapshot = transport_info_receiver.recv().await;
@@ -86,47 +83,9 @@ impl Server {
                         continue;
                     }
                     Some(snapshot) => {
-                        let mut transport_write_lock = transports.write();
-                        match transport_write_lock.as_mut() {
-                            Err(e) => {
-                                error!("Fail to acquire write lock on transports, error: {:#?}", e);
-                                continue;
-                            }
-                            Ok(transports) => {
-                                if snapshot.status == TransportStatus::Closed {
-                                    info!("Remove closed transport, transport: [{}]", snapshot.id);
-                                    transports.remove(snapshot.id.as_str());
-                                    continue;
-                                }
-                                info!("Add transport, transport: [{}]", snapshot.id);
-                                transports.insert(snapshot.id.clone(), snapshot);
-                            }
-                        };
+                        info!("Transport status change happen: [{}]", snapshot.id);
                     }
                 }
-            }
-        });
-        let transports = self.transports.clone();
-        self.master_runtime.spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(30));
-            loop {
-                println!("######Transport list on proxy: \n\n");
-                {
-                    let transports_read_lock = transports.read();
-                    match transports_read_lock {
-                        Err(e) => {
-                            error!("Fail to acquire transports read lock because of error, error: {:#?}", e);
-                            continue;
-                        }
-                        Ok(lock) => {
-                            for (_, snapshot) in lock.iter() {
-                                println!("{:#?}", snapshot)
-                            }
-                        }
-                    }
-                }
-                println!("\n\n");
-                interval.tick().await;
             }
         });
         self.master_runtime.block_on(async move {
