@@ -650,7 +650,7 @@ impl Socks5Transport {
         let InitResult {
             connect_message_id,
             mut proxy_framed,
-            source_address,
+            source_address: udp_client_source_address,
             target_address,
             client_tcp_stream,
             client_udp_socket: mut client_udp_socket,
@@ -772,34 +772,45 @@ impl Socks5Transport {
                         } = proxy_message_payload.split();
                         match proxy_message_payload_type {
                             PpaassProxyMessagePayloadType::UdpData => {
+                                let udp_client_source_address = udp_client_source_address.clone();
                                 let socks5_udp_data_response =
                                     match proxy_message_payload_source_address.address_type() {
                                         PpaassAddressType::IpV4 => Socks5UdpDataResponse::new(
                                             0,
                                             Socks5AddrType::IpV4,
-                                            proxy_message_payload_source_address.host().to_vec(),
-                                            proxy_message_payload_source_address.port(),
+                                            udp_client_source_address.host().to_vec(),
+                                            udp_client_source_address.port(),
                                             proxy_message_payload_data,
                                         ),
                                         PpaassAddressType::IpV6 => Socks5UdpDataResponse::new(
                                             0,
                                             Socks5AddrType::IpV6,
-                                            proxy_message_payload_source_address.host().to_vec(),
-                                            proxy_message_payload_source_address.port(),
+                                            udp_client_source_address.host().to_vec(),
+                                            udp_client_source_address.port(),
                                             proxy_message_payload_data,
                                         ),
                                         PpaassAddressType::Domain => Socks5UdpDataResponse::new(
                                             0,
                                             Socks5AddrType::Domain,
-                                            proxy_message_payload_source_address.host().to_vec(),
-                                            proxy_message_payload_source_address.port(),
+                                            udp_client_source_address.host().to_vec(),
+                                            udp_client_source_address.port(),
                                             proxy_message_payload_data,
                                         ),
                                     };
                                 let socks5_udp_data_response_bytes: Vec<u8> =
                                     socks5_udp_data_response.into();
+                                let udp_client_source_sockst_address: SocketAddr =
+                                    match udp_client_source_address.try_into() {
+                                        Err(e) => {
+                                            continue;
+                                        }
+                                        Ok(result) => result,
+                                    };
                                 if let Err(e) = client_udp_socket_for_proxy_to_client_relay
-                                    .send(socks5_udp_data_response_bytes.as_slice())
+                                    .send_to(
+                                        socks5_udp_data_response_bytes.as_slice(),
+                                        udp_client_source_sockst_address,
+                                    )
                                     .await
                                 {
                                     error!("Fail to send udp data from proxy to client for socks 5 transport, transport: [{}], error: {:#?}", transport_id_for_proxy_to_client_relay, e);
