@@ -38,10 +38,6 @@ const LOCAL_ADDRESS: [u8; 4] = [0u8; 4];
 pub(crate) struct Socks5Transport {
     id: String,
     status: TransportStatus,
-    client_read_bytes: usize,
-    client_write_bytes: usize,
-    proxy_read_bytes: usize,
-    proxy_write_bytes: usize,
     start_time: u128,
     end_time: Option<u128>,
     user_token: Vec<u8>,
@@ -89,10 +85,6 @@ impl Transport for Socks5Transport {
             id: self.id.clone(),
             snapshot_type: TransportSnapshotType::SOCKS5,
             status: self.status.clone(),
-            client_read_bytes: self.client_read_bytes,
-            client_write_bytes: self.client_write_bytes,
-            proxy_read_bytes: self.proxy_read_bytes,
-            proxy_write_bytes: self.proxy_write_bytes,
             start_time: self.start_time,
             end_time: self.end_time,
             user_token: self.user_token.clone(),
@@ -130,10 +122,6 @@ impl Socks5Transport {
         Ok(Self {
             id: generate_uuid(),
             status: TransportStatus::New,
-            client_read_bytes: 0,
-            client_write_bytes: 0,
-            proxy_read_bytes: 0,
-            proxy_write_bytes: 0,
             start_time: {
                 SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)?
@@ -857,8 +845,6 @@ impl Socks5Transport {
         let connect_message_id_for_client_to_proxy_relay = connect_message_id.clone();
         let connect_message_id_for_proxy_to_client_relay = connect_message_id.clone();
         let client_to_proxy_relay = tokio::spawn(async move {
-            let mut client_read_bytes = 0;
-            let mut proxy_write_bytes = 0;
             loop {
                 let mut read_buf = Vec::<u8>::with_capacity(1024 * 64);
                 match client_tcp_stream_read.read_buf(&mut read_buf).await {
@@ -867,7 +853,7 @@ impl Socks5Transport {
                             "Fail to read data from agent client because of error, error: {:#?}",
                             e
                         );
-                        return (client_read_bytes, proxy_write_bytes);
+                        return;
                     }
                     Ok(data_size) => {
                         if data_size == 0 && read_buf.remaining_mut() > 0 {
@@ -893,9 +879,8 @@ impl Socks5Transport {
                                 error!("Fail to flush connection close from agent to proxy because of error, error: {:#?}", e);
                                 break;
                             }
-                            return (client_read_bytes, proxy_write_bytes);
+                            return;
                         }
-                        client_read_bytes += data_size;
                     }
                 }
                 let read_buf_size = read_buf.len();
@@ -926,13 +911,9 @@ impl Socks5Transport {
                     );
                     break;
                 }
-                proxy_write_bytes += read_buf_size;
             }
-            (client_read_bytes, proxy_write_bytes)
         });
         let proxy_to_client_relay = tokio::spawn(async move {
-            let mut client_write_bytes = 0;
-            let mut proxy_read_bytes = 0;
             loop {
                 info!(
                     "Begin the loop to read from proxy for socks 5 transport: [{}]",
@@ -945,12 +926,12 @@ impl Socks5Transport {
                             "Noting read from proxy for socks 5 transport: [{}]",
                             transport_id_for_proxy_to_client_relay
                         );
-                        return (proxy_read_bytes, client_write_bytes);
+                        return;
                     }
                     Some(proxy_message) => match proxy_message {
                         Err(e) => {
                             error!("Fail to read data from proxy because of error, socks 5 transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
-                            return (proxy_read_bytes, client_write_bytes);
+                            return;
                         }
                         Ok(proxy_message) => {
                             let PpaassMessageSplitResult { payload, .. } = proxy_message.split();
@@ -958,7 +939,7 @@ impl Socks5Transport {
                             match payload {
                                 Err(e) => {
                                     error!("Fail to read data from proxy because of error, socks 5 transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
-                                    return (proxy_read_bytes, client_write_bytes);
+                                    return;
                                 }
                                 Ok(payload) => {
                                     let PpaassProxyMessagePayloadSplitResult {
@@ -972,27 +953,25 @@ impl Socks5Transport {
                                             continue;
                                         }
                                         PpaassProxyMessagePayloadType::TcpData => {
-                                            proxy_read_bytes += proxy_message_data.len();
                                             debug!("Receive target data for http transport: [{}]\n{}\n", transport_id_for_proxy_to_client_relay, String::from_utf8_lossy(&proxy_message_data));
                                             if let Err(e) = client_tcp_stream_write
                                                 .write(&proxy_message_data)
                                                 .await
                                             {
                                                 error!("Fail to send data from agent to client because of error, socks 5 transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
-                                                return (proxy_read_bytes, client_write_bytes);
+                                                return;
                                             }
                                             if let Err(e) = client_tcp_stream_write.flush().await {
                                                 error!("Fail to flush data from agent to client because of error, socks 5 transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
-                                                return (proxy_read_bytes, client_write_bytes);
+                                                return;
                                             }
-                                            client_write_bytes += proxy_message_data.len();
                                         }
                                         PpaassProxyMessagePayloadType::TcpConnectionClose => {
                                             info!(
                                                 "Socks 5 transport:[{}] close",
                                                 transport_id_for_proxy_to_client_relay
                                             );
-                                            return (proxy_read_bytes, client_write_bytes);
+                                            return;
                                         }
                                         other_payload_type => {
                                             error!("Fail to read data from proxy because of proxy give invalid type: {:?}, socks 5 transport:[{}]", other_payload_type, transport_id_for_proxy_to_client_relay);
@@ -1006,12 +985,8 @@ impl Socks5Transport {
                 }
             }
         });
-        let (client_read_bytes, proxy_write_bytes) = client_to_proxy_relay.await?;
-        self.client_read_bytes += client_read_bytes;
-        self.proxy_write_bytes += proxy_write_bytes;
-        let (proxy_read_bytes, client_write_bytes) = proxy_to_client_relay.await?;
-        self.proxy_read_bytes += proxy_read_bytes;
-        self.client_write_bytes += client_write_bytes;
+        client_to_proxy_relay.await?;
+        proxy_to_client_relay.await?;
         Ok(())
     }
 }

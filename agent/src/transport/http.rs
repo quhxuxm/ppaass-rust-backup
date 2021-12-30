@@ -49,10 +49,6 @@ const CONNECTION_ESTABLISHED: &str = "Connection Established";
 pub(crate) struct HttpTransport {
     id: String,
     status: TransportStatus,
-    client_read_bytes: usize,
-    client_write_bytes: usize,
-    proxy_read_bytes: usize,
-    proxy_write_bytes: usize,
     start_time: u128,
     end_time: Option<u128>,
     user_token: Vec<u8>,
@@ -97,10 +93,6 @@ impl Transport for HttpTransport {
             id: self.id.clone(),
             snapshot_type: TransportSnapshotType::HTTP,
             status: self.status.clone(),
-            client_read_bytes: self.client_read_bytes,
-            client_write_bytes: self.client_write_bytes,
-            proxy_read_bytes: self.proxy_read_bytes,
-            proxy_write_bytes: self.proxy_write_bytes,
             start_time: self.start_time,
             end_time: self.end_time,
             user_token: self.user_token.clone(),
@@ -138,10 +130,6 @@ impl HttpTransport {
         Ok(Self {
             id: generate_uuid(),
             status: TransportStatus::New,
-            client_read_bytes: 0,
-            client_write_bytes: 0,
-            proxy_read_bytes: 0,
-            proxy_write_bytes: 0,
             start_time: {
                 SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)?
@@ -422,8 +410,6 @@ impl HttpTransport {
         let connect_message_id_for_client_to_proxy_relay = connect_message_id.clone();
         let connect_message_id_for_proxy_to_client_relay = connect_message_id.clone();
         let client_to_proxy_relay = tokio::spawn(async move {
-            let mut client_read_bytes = 0;
-            let mut proxy_write_bytes = 0;
             if let Some(message) = http_init_message {
                 let message_size = message.len();
                 let init_data_message_body = PpaassAgentMessagePayload::new(
@@ -441,14 +427,12 @@ impl HttpTransport {
                 );
                 if let Err(e) = proxy_framed_write.send(init_data_message).await {
                     error!("Fail to send data from agent to proxy because of error (init data), error: {:#?}", e);
-                    return (client_read_bytes, proxy_write_bytes);
+                    return;
                 }
                 if let Err(e) = proxy_framed_write.flush().await {
                     error!("Fail to flush data from agent to proxy because of error (init data), error: {:#?}", e);
-                    return (client_read_bytes, proxy_write_bytes);
+                    return;
                 }
-                client_read_bytes += message_size;
-                proxy_write_bytes += message_size;
             }
             loop {
                 let mut read_buf = Vec::<u8>::with_capacity(1024 * 64);
@@ -458,7 +442,7 @@ impl HttpTransport {
                             "Fail to read data from agent client because of error, error: {:#?}",
                             e
                         );
-                        return (client_read_bytes, proxy_write_bytes);
+                        return;
                     }
                     Ok(data_size) => {
                         if data_size == 0 && read_buf.remaining_mut() > 0 {
@@ -484,9 +468,8 @@ impl HttpTransport {
                                 error!("Fail to flush connection close from agent to proxy because of error, error: {:#?}", e);
                                 break;
                             }
-                            return (client_read_bytes, proxy_write_bytes);
+                            return;
                         }
-                        client_read_bytes += data_size;
                     }
                 }
                 let read_buf_size = read_buf.len();
@@ -517,9 +500,7 @@ impl HttpTransport {
                     );
                     break;
                 }
-                proxy_write_bytes += read_buf_size;
             }
-            (client_read_bytes, proxy_write_bytes)
         });
         let proxy_to_client_relay = tokio::spawn(async move {
             let mut client_write_bytes = 0;
@@ -597,12 +578,10 @@ impl HttpTransport {
                 }
             }
         });
-        let (client_read_bytes, proxy_write_bytes) = client_to_proxy_relay.await?;
-        self.client_read_bytes += client_read_bytes;
-        self.proxy_write_bytes += proxy_write_bytes;
-        let (proxy_read_bytes, client_write_bytes) = proxy_to_client_relay.await?;
-        self.proxy_read_bytes += proxy_read_bytes;
-        self.client_write_bytes += client_write_bytes;
+        client_to_proxy_relay.await?;
+
+        proxy_to_client_relay.await?;
+
         Ok(())
     }
 }
