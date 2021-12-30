@@ -14,7 +14,10 @@ use tokio_util::codec::{Decoder, Framed};
 
 use ppaass_common::agent::{PpaassAgentMessagePayload, PpaassAgentMessagePayloadType};
 use ppaass_common::codec::PpaassMessageCodec;
-use ppaass_common::common::{PpaassAddress, PpaassAddressType, PpaassMessage, PpaassMessagePayloadEncryptionType, PpaassMessageSplitResult, PpaassProxyMessagePayloadSplitResult, PpaassProxyMessagePayloadType};
+use ppaass_common::common::{
+    PpaassAddress, PpaassAddressType, PpaassMessage, PpaassMessagePayloadEncryptionType,
+    PpaassMessageSplitResult, PpaassProxyMessagePayloadSplitResult, PpaassProxyMessagePayloadType,
+};
 use ppaass_common::generate_uuid;
 use ppaass_common::proxy::PpaassProxyMessagePayload;
 
@@ -22,8 +25,14 @@ use crate::codec::socks::{Socks5AuthCodec, Socks5ConnectCodec};
 use crate::common::ProxyAddress;
 use crate::config::AgentConfiguration;
 use crate::error::PpaassAgentError;
-use crate::protocol::socks::{Socks5AddrType, Socks5AuthMethod, Socks5AuthResponse, Socks5ConnectRequestType, Socks5ConnectResponse, Socks5ConnectResponseStatus};
-use crate::transport::common::{Transport, TransportSnapshot, TransportSnapshotType, TransportStatus};
+use crate::protocol::socks::{
+    Socks5AddrType, Socks5AuthMethod, Socks5AuthResponse, Socks5ConnectRequestType,
+    Socks5ConnectResponse, Socks5ConnectResponseStatus, Socks5UdpDataRequest,
+    Socks5UdpDataResponse,
+};
+use crate::transport::common::{
+    Transport, TransportSnapshot, TransportSnapshotType, TransportStatus,
+};
 
 const LOCAL_ADDRESS: [u8; 4] = [0u8; 4];
 pub(crate) struct Socks5Transport {
@@ -56,13 +65,18 @@ struct InitResult {
 
 #[async_trait]
 impl Transport for Socks5Transport {
-    async fn start(&mut self, client_tcp_stream: TcpStream, rsa_public_key: String, rsa_private_key: String) -> Result<()> {
+    async fn start(
+        &mut self,
+        client_tcp_stream: TcpStream,
+        rsa_public_key: String,
+        rsa_private_key: String,
+    ) -> Result<()> {
         let client_tcp_stream = self.authenticate(client_tcp_stream).await?;
-        let init_result = self.init(client_tcp_stream, rsa_public_key, rsa_private_key).await?;
+        let init_result = self
+            .init(client_tcp_stream, rsa_public_key, rsa_private_key)
+            .await?;
         return match init_result {
-            None => {
-                Ok(())
-            }
+            None => Ok(()),
             Some(connect_result) => {
                 self.relay(connect_result).await?;
                 Ok(())
@@ -94,15 +108,25 @@ impl Transport for Socks5Transport {
 
     async fn close(&mut self) -> anyhow::Result<()> {
         self.status = TransportStatus::Closed;
-        self.end_time = Some(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?.as_millis());
+        self.end_time = Some(
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)?
+                .as_millis(),
+        );
         info!("Graceful close socks5 transport [{}]", self.id);
         Ok(())
     }
 }
 
 impl Socks5Transport {
-    pub(crate) fn new(configuration: Arc<AgentConfiguration>, snapshot_sender: Sender<TransportSnapshot>) -> Result<Self> {
-        let user_token = configuration.user_token().clone().context("Can not get user token from configuration.")?;
+    pub(crate) fn new(
+        configuration: Arc<AgentConfiguration>,
+        snapshot_sender: Sender<TransportSnapshot>,
+    ) -> Result<Self> {
+        let user_token = configuration
+            .user_token()
+            .clone()
+            .context("Can not get user token from configuration.")?;
         Ok(Self {
             id: generate_uuid(),
             status: TransportStatus::New,
@@ -111,7 +135,9 @@ impl Socks5Transport {
             proxy_read_bytes: 0,
             proxy_write_bytes: 0,
             start_time: {
-                SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?.as_millis()
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)?
+                    .as_millis()
             },
             end_time: None,
             user_token: user_token.into_bytes(),
@@ -125,14 +151,22 @@ impl Socks5Transport {
 
     async fn authenticate(&mut self, mut client_tcp_stream: TcpStream) -> Result<TcpStream> {
         if self.status != TransportStatus::New {
-            return Err(PpaassAgentError::InvalidTransportStatus(self.id.clone(), TransportStatus::TcpConnected, self.status).into());
+            return Err(PpaassAgentError::InvalidTransportStatus(
+                self.id.clone(),
+                TransportStatus::TcpConnected,
+                self.status,
+            )
+            .into());
         }
         let socks5_auth_codec = Socks5AuthCodec::default();
         let mut client_tcp_framed = socks5_auth_codec.framed(&mut client_tcp_stream);
         let socks5_auth_command = client_tcp_framed.next().await;
         match socks5_auth_command {
             None => {
-                info!("Nothing to read for socks5 authenticate process, socks5 transport: [{}]", self.id);
+                info!(
+                    "Nothing to read for socks5 authenticate process, socks5 transport: [{}]",
+                    self.id
+                );
                 return Ok(client_tcp_stream);
             }
             Some(command) => {
@@ -142,7 +176,8 @@ impl Socks5Transport {
                         return Err(e.into());
                     }
                     Ok(_socks5_auth_request) => {
-                        let auth_response = Socks5AuthResponse::new(Socks5AuthMethod::NoAuthenticationRequired);
+                        let auth_response =
+                            Socks5AuthResponse::new(Socks5AuthMethod::NoAuthenticationRequired);
                         if let Err(e) = client_tcp_framed.send(auth_response).await {
                             error!("Fail to send socks5 authenticate response to client because of error, socks5 transport: [{}], error: {:#?}", self.id, e);
                             return Err(PpaassAgentError::IoError(e).into());
@@ -159,9 +194,19 @@ impl Socks5Transport {
         Ok(client_tcp_stream)
     }
 
-    async fn init(&mut self, mut client_tcp_stream: TcpStream, rsa_public_key: String, rsa_private_key: String) -> Result<Option<InitResult>> {
+    async fn init(
+        &mut self,
+        mut client_tcp_stream: TcpStream,
+        rsa_public_key: String,
+        rsa_private_key: String,
+    ) -> Result<Option<InitResult>> {
         if self.status != TransportStatus::Authenticated {
-            return Err(PpaassAgentError::InvalidTransportStatus(self.id.clone(), TransportStatus::TcpConnected, self.status).into());
+            return Err(PpaassAgentError::InvalidTransportStatus(
+                self.id.clone(),
+                TransportStatus::TcpConnected,
+                self.status,
+            )
+            .into());
         }
         let client_socket_address = client_tcp_stream.peer_addr()?;
         let socks5_connect_codec = Socks5ConnectCodec::default();
@@ -169,7 +214,10 @@ impl Socks5Transport {
         let socks5_connect_cmd = client_tcp_framed.next().await;
         match socks5_connect_cmd {
             None => {
-                info!("Nothing to read for socks5 connect process, socks5 transport: [{}]", self.id);
+                info!(
+                    "Nothing to read for socks5 connect process, socks5 transport: [{}]",
+                    self.id
+                );
                 return Ok(None);
             }
             Some(socks5_connect_cmd) => {
@@ -182,44 +230,68 @@ impl Socks5Transport {
                         let client_socket_address = client_socket_address;
                         let source_address: PpaassAddress = client_socket_address.into();
                         let target_address = match socks5_connect_cmd.addr_type() {
-                            Socks5AddrType::IpV4 => {
-                                PpaassAddress::new(socks5_connect_cmd.dst_host().to_vec(), socks5_connect_cmd.dst_port(), PpaassAddressType::IpV4)
-                            }
-                            Socks5AddrType::IpV6 => {
-                                PpaassAddress::new(socks5_connect_cmd.dst_host().to_vec(), socks5_connect_cmd.dst_port(), PpaassAddressType::IpV6)
-                            }
-                            Socks5AddrType::Domain => {
-                                PpaassAddress::new(socks5_connect_cmd.dst_host().to_vec(), socks5_connect_cmd.dst_port(), PpaassAddressType::Domain)
-                            }
+                            Socks5AddrType::IpV4 => PpaassAddress::new(
+                                socks5_connect_cmd.dst_host().to_vec(),
+                                socks5_connect_cmd.dst_port(),
+                                PpaassAddressType::IpV4,
+                            ),
+                            Socks5AddrType::IpV6 => PpaassAddress::new(
+                                socks5_connect_cmd.dst_host().to_vec(),
+                                socks5_connect_cmd.dst_port(),
+                                PpaassAddressType::IpV6,
+                            ),
+                            Socks5AddrType::Domain => PpaassAddress::new(
+                                socks5_connect_cmd.dst_host().to_vec(),
+                                socks5_connect_cmd.dst_port(),
+                                PpaassAddressType::Domain,
+                            ),
                         };
                         match socks5_connect_cmd.request_type() {
                             Socks5ConnectRequestType::Connect => {
                                 let proxy_stream = self.connect_to_proxy().await?;
                                 match proxy_stream {
                                     None => {
-                                        error!("Can not connect to proxy, socks5 transport: [{}]", self.id);
+                                        error!(
+                                            "Can not connect to proxy, socks5 transport: [{}]",
+                                            self.id
+                                        );
                                         return Err(PpaassAgentError::FailToConnectProxy.into());
                                     }
                                     Some(proxy_stream) => {
-                                        let connect_message_payload = PpaassAgentMessagePayload::new(
-                                            source_address.clone(), target_address.clone(), PpaassAgentMessagePayloadType::TcpConnect, vec![],
-                                        );
+                                        let connect_message_payload =
+                                            PpaassAgentMessagePayload::new(
+                                                source_address.clone(),
+                                                target_address.clone(),
+                                                PpaassAgentMessagePayloadType::TcpConnect,
+                                                vec![],
+                                            );
                                         let connect_message = PpaassMessage::new(
-                                            "".to_string(), self.user_token.clone(),
-                                            generate_uuid().into_bytes(), PpaassMessagePayloadEncryptionType::random(),
+                                            "".to_string(),
+                                            self.user_token.clone(),
+                                            generate_uuid().into_bytes(),
+                                            PpaassMessagePayloadEncryptionType::random(),
                                             connect_message_payload.into(),
                                         );
-                                        let ppaass_message_codec = PpaassMessageCodec::new(rsa_public_key,
-                                            rsa_private_key);
-                                        let mut proxy_framed = ppaass_message_codec.framed(proxy_stream);
+                                        let ppaass_message_codec = PpaassMessageCodec::new(
+                                            rsa_public_key,
+                                            rsa_private_key,
+                                        );
+                                        let mut proxy_framed =
+                                            ppaass_message_codec.framed(proxy_stream);
                                         if let Err(e) = proxy_framed.send(connect_message).await {
                                             error!("Fail to send connect to proxy, because of error, socks5 transport: [{}], error: {:#?}", self.id, e);
-                                            Self::send_socks5_failure_response(&mut client_tcp_framed).await;
+                                            Self::send_socks5_failure_response(
+                                                &mut client_tcp_framed,
+                                            )
+                                            .await;
                                             return Err(PpaassAgentError::FailToConnectProxy.into());
                                         }
                                         if let Err(e) = proxy_framed.flush().await {
                                             error!("Fail to flush connect to proxy, because of error, socks5 transport: [{}], error: {:#?}", self.id, e);
-                                            Self::send_socks5_failure_response(&mut client_tcp_framed).await;
+                                            Self::send_socks5_failure_response(
+                                                &mut client_tcp_framed,
+                                            )
+                                            .await;
                                             return Err(PpaassAgentError::FailToConnectProxy.into());
                                         }
                                         let mut proxy_connect_response = proxy_framed.next().await;
@@ -227,21 +299,32 @@ impl Socks5Transport {
                                         let proxy_message = loop {
                                             match proxy_connect_response {
                                                 None => {
-                                                    tokio::time::sleep(Duration::from_secs(10)).await;
+                                                    tokio::time::sleep(Duration::from_secs(10))
+                                                        .await;
                                                     if retry_times > 2 {
                                                         info!("Retry 3 times to read connect response proxy message for socks 5 transport [{}] but still fail.", self.id);
-                                                        Self::send_socks5_failure_response(&mut client_tcp_framed).await;
-                                                        return Err(PpaassAgentError::FailToConnectProxy.into());
+                                                        Self::send_socks5_failure_response(
+                                                            &mut client_tcp_framed,
+                                                        )
+                                                        .await;
+                                                        return Err(
+                                                            PpaassAgentError::FailToConnectProxy
+                                                                .into(),
+                                                        );
                                                     }
                                                     retry_times += 1;
                                                     info!("Retry to read connect response proxy message for socks 5 transport [{}] ...", self.id);
-                                                    proxy_connect_response = proxy_framed.next().await;
+                                                    proxy_connect_response =
+                                                        proxy_framed.next().await;
                                                     continue;
                                                 }
                                                 Some(response) => {
                                                     match response {
                                                         Err(e) => {
-                                                            Self::send_socks5_failure_response(&mut client_tcp_framed).await;
+                                                            Self::send_socks5_failure_response(
+                                                                &mut client_tcp_framed,
+                                                            )
+                                                            .await;
                                                             return Err(PpaassAgentError::FailToConnectProxy.into());
                                                         }
                                                         Ok(response) => {
@@ -256,24 +339,31 @@ impl Socks5Transport {
                                             payload: proxy_message_payload,
                                             ..
                                         } = proxy_message.split();
-                                        let proxy_message_payload: PpaassProxyMessagePayload = proxy_message_payload.try_into()?;
+                                        let proxy_message_payload: PpaassProxyMessagePayload =
+                                            proxy_message_payload.try_into()?;
                                         let PpaassProxyMessagePayloadSplitResult {
                                             payload_type: proxy_message_payload_type,
                                             ..
                                         } = proxy_message_payload.split();
                                         match proxy_message_payload_type {
                                             PpaassProxyMessagePayloadType::TcpConnectFail => {
-                                                Self::send_socks5_failure_response(&mut client_tcp_framed).await;
+                                                Self::send_socks5_failure_response(
+                                                    &mut client_tcp_framed,
+                                                )
+                                                .await;
                                                 Err(PpaassAgentError::FailToConnectProxy.into())
                                             }
                                             PpaassProxyMessagePayloadType::TcpConnectSuccess => {
-                                                let socks5_connect_success_response = Socks5ConnectResponse::new(
-                                                    Socks5ConnectResponseStatus::Succeeded,
-                                                    socks5_connect_cmd.addr_type(),
-                                                    socks5_connect_cmd.dst_host().to_vec(),
-                                                    socks5_connect_cmd.dst_port(),
-                                                );
-                                                client_tcp_framed.send(socks5_connect_success_response).await?;
+                                                let socks5_connect_success_response =
+                                                    Socks5ConnectResponse::new(
+                                                        Socks5ConnectResponseStatus::Succeeded,
+                                                        socks5_connect_cmd.addr_type(),
+                                                        socks5_connect_cmd.dst_host().to_vec(),
+                                                        socks5_connect_cmd.dst_port(),
+                                                    );
+                                                client_tcp_framed
+                                                    .send(socks5_connect_success_response)
+                                                    .await?;
                                                 client_tcp_framed.flush().await?;
                                                 self.status = TransportStatus::TcpConnected;
                                                 Ok(Some(InitResult {
@@ -289,7 +379,10 @@ impl Socks5Transport {
                                                 Ok(None)
                                             }
                                             _ => {
-                                                Self::send_socks5_failure_response(&mut client_tcp_framed).await;
+                                                Self::send_socks5_failure_response(
+                                                    &mut client_tcp_framed,
+                                                )
+                                                .await;
                                                 Err(PpaassAgentError::FailToConnectProxy.into())
                                             }
                                         }
@@ -300,58 +393,100 @@ impl Socks5Transport {
                                 let proxy_stream = self.connect_to_proxy().await?;
                                 match proxy_stream {
                                     None => {
-                                        error!("Can not connect to proxy, socks5 transport: [{}]", self.id);
-                                        Self::send_socks5_failure_response(&mut client_tcp_framed).await;
+                                        error!(
+                                            "Can not connect to proxy, socks5 transport: [{}]",
+                                            self.id
+                                        );
+                                        Self::send_socks5_failure_response(&mut client_tcp_framed)
+                                            .await;
                                         return Err(PpaassAgentError::FailToConnectProxy.into());
                                     }
                                     Some(proxy_stream) => {
-                                        let ppaass_message_codec = PpaassMessageCodec::new(rsa_public_key,
-                                            rsa_private_key);
-                                        let mut proxy_framed = ppaass_message_codec.framed(proxy_stream);
-                                        let udp_source_address = PpaassAddress::new(source_address.host().to_vec(),
-                                            socks5_connect_cmd.dst_port(), *source_address.address_type(),
+                                        let ppaass_message_codec = PpaassMessageCodec::new(
+                                            rsa_public_key,
+                                            rsa_private_key,
+                                        );
+                                        let mut proxy_framed =
+                                            ppaass_message_codec.framed(proxy_stream);
+                                        let udp_source_address = PpaassAddress::new(
+                                            source_address.host().to_vec(),
+                                            socks5_connect_cmd.dst_port(),
+                                            *source_address.address_type(),
                                         );
                                         //The socks5 udp associate request do not contains target address, use a fake one.
-                                        let udp_target_address = PpaassAddress::new(vec![0, 0, 0, 0],
-                                            0, PpaassAddressType::IpV4,
+                                        let udp_target_address = PpaassAddress::new(
+                                            vec![0, 0, 0, 0],
+                                            0,
+                                            PpaassAddressType::IpV4,
                                         );
-                                        let udp_associate_message_payload = PpaassAgentMessagePayload::new(
-                                            udp_source_address.clone(), udp_target_address.clone(), PpaassAgentMessagePayloadType::UdpAssociate, vec![],
-                                        );
+                                        let udp_associate_message_payload =
+                                            PpaassAgentMessagePayload::new(
+                                                udp_source_address.clone(),
+                                                udp_target_address.clone(),
+                                                PpaassAgentMessagePayloadType::UdpAssociate,
+                                                vec![],
+                                            );
                                         let udp_associate_message = PpaassMessage::new(
-                                            "".to_string(), self.user_token.clone(), generate_uuid().into_bytes(),
-                                            PpaassMessagePayloadEncryptionType::random(), udp_associate_message_payload.into(),
+                                            "".to_string(),
+                                            self.user_token.clone(),
+                                            generate_uuid().into_bytes(),
+                                            PpaassMessagePayloadEncryptionType::random(),
+                                            udp_associate_message_payload.into(),
                                         );
-                                        if let Err(e) = proxy_framed.send(udp_associate_message).await {
+                                        if let Err(e) =
+                                            proxy_framed.send(udp_associate_message).await
+                                        {
                                             error!("Fail to send udp associate to proxy, because of error, socks5 transport: [{}], error: {:#?}", self.id, e);
-                                            Self::send_socks5_failure_response(&mut client_tcp_framed).await;
-                                            return Err(PpaassAgentError::FailToAssociateUdpOnProxy.into());
+                                            Self::send_socks5_failure_response(
+                                                &mut client_tcp_framed,
+                                            )
+                                            .await;
+                                            return Err(
+                                                PpaassAgentError::FailToAssociateUdpOnProxy.into(),
+                                            );
                                         }
                                         if let Err(e) = proxy_framed.flush().await {
                                             error!("Fail to flush udp associate to proxy, because of error, socks5 transport: [{}], error: {:#?}", self.id, e);
-                                            Self::send_socks5_failure_response(&mut client_tcp_framed).await;
-                                            return Err(PpaassAgentError::FailToAssociateUdpOnProxy.into());
+                                            Self::send_socks5_failure_response(
+                                                &mut client_tcp_framed,
+                                            )
+                                            .await;
+                                            return Err(
+                                                PpaassAgentError::FailToAssociateUdpOnProxy.into(),
+                                            );
                                         }
-                                        let mut proxy_udp_associate_response = proxy_framed.next().await;
+                                        let mut proxy_udp_associate_response =
+                                            proxy_framed.next().await;
                                         let mut retry_times = 0;
                                         let proxy_message = loop {
                                             match proxy_udp_associate_response {
                                                 None => {
-                                                    tokio::time::sleep(Duration::from_secs(10)).await;
+                                                    tokio::time::sleep(Duration::from_secs(10))
+                                                        .await;
                                                     if retry_times > 2 {
                                                         info!("Retry 3 times to read udp associate response proxy message for socks 5 transport [{}] but still fail.", self.id);
-                                                        Self::send_socks5_failure_response(&mut client_tcp_framed).await;
-                                                        return Err(PpaassAgentError::FailToConnectProxy.into());
+                                                        Self::send_socks5_failure_response(
+                                                            &mut client_tcp_framed,
+                                                        )
+                                                        .await;
+                                                        return Err(
+                                                            PpaassAgentError::FailToConnectProxy
+                                                                .into(),
+                                                        );
                                                     }
                                                     retry_times += 1;
                                                     info!("Retry to read udp associate response proxy message for socks 5 transport [{}] ...", self.id);
-                                                    proxy_udp_associate_response = proxy_framed.next().await;
+                                                    proxy_udp_associate_response =
+                                                        proxy_framed.next().await;
                                                     continue;
                                                 }
                                                 Some(response) => {
                                                     match response {
                                                         Err(e) => {
-                                                            Self::send_socks5_failure_response(&mut client_tcp_framed).await;
+                                                            Self::send_socks5_failure_response(
+                                                                &mut client_tcp_framed,
+                                                            )
+                                                            .await;
                                                             return Err(PpaassAgentError::FailToConnectProxy.into());
                                                         }
                                                         Ok(response) => {
@@ -366,24 +501,39 @@ impl Socks5Transport {
                                             payload: proxy_message_payload,
                                             ..
                                         } = proxy_message.split();
-                                        let proxy_message_payload: PpaassProxyMessagePayload = proxy_message_payload.try_into()?;
+                                        let proxy_message_payload: PpaassProxyMessagePayload =
+                                            proxy_message_payload.try_into()?;
                                         let PpaassProxyMessagePayloadSplitResult {
                                             payload_type: proxy_message_payload_type,
                                             ..
                                         } = proxy_message_payload.split();
                                         match proxy_message_payload_type {
                                             PpaassProxyMessagePayloadType::UdpAssociateFail => {
-                                                Self::send_socks5_failure_response(&mut client_tcp_framed).await;
-                                                Err(PpaassAgentError::FailToAssociateUdpOnProxy.into())
+                                                Self::send_socks5_failure_response(
+                                                    &mut client_tcp_framed,
+                                                )
+                                                .await;
+                                                Err(PpaassAgentError::FailToAssociateUdpOnProxy
+                                                    .into())
                                             }
                                             PpaassProxyMessagePayloadType::UdpAssociateSuccess => {
-                                                let agent_udp_socket_to_receive_client_message = UdpSocket::bind(SocketAddr::new(IpAddr::from(LOCAL_ADDRESS), 0)).await;
+                                                let agent_udp_socket_to_receive_client_message =
+                                                    UdpSocket::bind(SocketAddr::new(
+                                                        IpAddr::from(LOCAL_ADDRESS),
+                                                        0,
+                                                    ))
+                                                    .await;
                                                 match agent_udp_socket_to_receive_client_message {
                                                     Err(e) => {
-                                                        Self::send_socks5_failure_response(&mut client_tcp_framed).await;
+                                                        Self::send_socks5_failure_response(
+                                                            &mut client_tcp_framed,
+                                                        )
+                                                        .await;
                                                         Err(PpaassAgentError::FailToAssociateUdpOnProxy.into())
                                                     }
-                                                    Ok(agent_udp_socket_to_receive_client_message) => {
+                                                    Ok(
+                                                        agent_udp_socket_to_receive_client_message,
+                                                    ) => {
                                                         let agent_udp_socket_bind_address = agent_udp_socket_to_receive_client_message.local_addr()?;
                                                         let socks5_udp_associate_success_response = Socks5ConnectResponse::new(
                                                             Socks5ConnectResponseStatus::Succeeded,
@@ -391,11 +541,15 @@ impl Socks5Transport {
                                                             LOCAL_ADDRESS.to_vec(),
                                                             agent_udp_socket_bind_address.port(),
                                                         );
-                                                        let client_udp_socket_address: SocketAddr = udp_source_address.clone().try_into()?;
-                                                        agent_udp_socket_to_receive_client_message.connect(client_udp_socket_address).await?;
+                                                        let client_udp_socket_address: SocketAddr =
+                                                            udp_source_address.clone().try_into()?;
+                                                        agent_udp_socket_to_receive_client_message
+                                                            .connect(client_udp_socket_address)
+                                                            .await?;
                                                         client_tcp_framed.send(socks5_udp_associate_success_response).await?;
                                                         client_tcp_framed.flush().await?;
-                                                        self.status = TransportStatus::UdpAssociated;
+                                                        self.status =
+                                                            TransportStatus::UdpAssociated;
                                                         Ok(Some(InitResult {
                                                             client_tcp_stream: Some(client_tcp_stream),
                                                             client_udp_socket: Some(agent_udp_socket_to_receive_client_message),
@@ -408,8 +562,12 @@ impl Socks5Transport {
                                                 }
                                             }
                                             _ => {
-                                                Self::send_socks5_failure_response(&mut client_tcp_framed).await;
-                                                Err(PpaassAgentError::FailToAssociateUdpOnProxy.into())
+                                                Self::send_socks5_failure_response(
+                                                    &mut client_tcp_framed,
+                                                )
+                                                .await;
+                                                Err(PpaassAgentError::FailToAssociateUdpOnProxy
+                                                    .into())
                                             }
                                         }
                                     }
@@ -425,15 +583,22 @@ impl Socks5Transport {
         }
     }
 
-    async fn send_socks5_failure_response<'a>(client_tcp_framed: &'a mut Socks5ConnectFramed<'a>) -> Result<()> {
-        let connect_error_response = Socks5ConnectResponse::new_status_only(Socks5ConnectResponseStatus::Failure);
+    async fn send_socks5_failure_response<'a>(
+        client_tcp_framed: &'a mut Socks5ConnectFramed<'a>,
+    ) -> Result<()> {
+        let connect_error_response =
+            Socks5ConnectResponse::new_status_only(Socks5ConnectResponseStatus::Failure);
         client_tcp_framed.send(connect_error_response).await?;
         client_tcp_framed.flush().await?;
         Ok(())
     }
 
     async fn connect_to_proxy(&mut self) -> Result<Option<TcpStream>> {
-        let proxy_addresses = self.configuration.proxy_addresses().clone().context("Proxy address did not configure properly")?;
+        let proxy_addresses = self
+            .configuration
+            .proxy_addresses()
+            .clone()
+            .context("Proxy address did not configure properly")?;
         let mut proxy_addresses_iter = proxy_addresses.iter();
         let proxy_stream: Option<TcpStream> = loop {
             let proxy_address = proxy_addresses_iter.next();
@@ -445,7 +610,7 @@ impl Socks5Transport {
                             error!("Fail to parse proxy address because of error, socks5 transport: [{}], error: {:#?}", self.id, e);
                             continue;
                         }
-                        Ok(address) => address
+                        Ok(address) => address,
                     };
                     let proxy_address_string: String = proxy_address.into();
                     match TcpStream::connect(proxy_address_string.clone()).await {
@@ -455,7 +620,10 @@ impl Socks5Transport {
                             continue;
                         }
                         Ok(stream) => {
-                            info!("Success connect to proxy address: [{}]", proxy_address_string);
+                            info!(
+                                "Success connect to proxy address: [{}]",
+                                proxy_address_string
+                            );
                             break Some(stream);
                         }
                     }
@@ -474,7 +642,12 @@ impl Socks5Transport {
                 self.do_udp_relay(init_result).await?;
             }
             _ => {
-                return Err(PpaassAgentError::InvalidTransportStatus(self.id.clone(), TransportStatus::TcpConnected, self.status).into());
+                return Err(PpaassAgentError::InvalidTransportStatus(
+                    self.id.clone(),
+                    TransportStatus::TcpConnected,
+                    self.status,
+                )
+                .into());
             }
         }
         Ok(())
@@ -482,24 +655,144 @@ impl Socks5Transport {
     async fn do_udp_relay(&mut self, init_result: InitResult) -> Result<()> {
         let InitResult {
             connect_message_id,
-            proxy_framed,
+            mut proxy_framed,
             source_address,
             target_address,
             client_tcp_stream,
-            mut client_udp_socket
+            mut client_udp_socket,
         } = init_result;
+        let user_token_for_client_to_proxy_relay = self.user_token.clone();
+        let user_token_for_proxy_to_client_relay = self.user_token.clone();
+        let (mut proxy_framed_write, mut proxy_framed_read) = proxy_framed.split();
+        let client_udp_socket = match client_udp_socket.take() {
+            None => return Err(PpaassAgentError::FailToAssociateUdpOnProxy.into()),
+            Some(client_udp_socket) => Arc::new(client_udp_socket),
+        };
+        let client_udp_socket_for_client_to_proxy_relay = client_udp_socket.clone();
+        let client_udp_socket_for_proxy_to_client_relay = client_udp_socket.clone();
         let client_to_proxy_relay = tokio::spawn(async move {
             loop {
                 let mut buf = [0u8; 65536];
-                let client_udp_socket = client_udp_socket.take().context("Fail to unwrap client udp socket");
-                if let Err(e) = client_udp_socket {
-                    return;
+                let (data_size, client_udp_message_address) =
+                    match client_udp_socket_for_client_to_proxy_relay
+                        .recv_from(&mut buf)
+                        .await
+                    {
+                        Ok(result) => result,
+                        Err(e) => {
+                            return;
+                        }
+                    };
+                let udp_data_diagram = buf[..data_size].to_vec();
+                let socks5_udp_data_request: Socks5UdpDataRequest =
+                    match udp_data_diagram.try_into() {
+                        Ok(result) => result,
+                        Err(e) => {
+                            return;
+                        }
+                    };
+
+                let udp_data_message_body = PpaassAgentMessagePayload::new(
+                    source_address.clone(),
+                    target_address.clone(),
+                    PpaassAgentMessagePayloadType::UdpData,
+                    socks5_udp_data_request.data().to_vec(),
+                );
+                let udp_data_message = PpaassMessage::new(
+                    connect_message_id.clone(),
+                    user_token_for_client_to_proxy_relay.clone(),
+                    generate_uuid().into_bytes(),
+                    PpaassMessagePayloadEncryptionType::random(),
+                    udp_data_message_body.into(),
+                );
+
+                if let Err(e) = proxy_framed_write.send(udp_data_message).await {
+                    error!(
+                        "Fail to send udp data from agent to proxy because of error, error: {:#?}",
+                        e
+                    );
+                    continue;
                 }
-                let client_udp_socket = client_udp_socket.unwrap();
+                if let Err(e) = proxy_framed_write.flush().await {
+                    error!(
+                        "Fail to flush udp data from agent to proxy because of error, error: {:#?}",
+                        e
+                    );
+                    continue;
+                }
             }
         });
         let proxy_to_client_relay = tokio::spawn(async move {
-            loop {}
+            loop {
+                let proxy_udp_message = proxy_framed_read.next().await;
+                match proxy_udp_message {
+                    None => continue,
+                    Some(proxy_udp_message) => {
+                        let proxy_udp_message = match proxy_udp_message {
+                            Err(e) => continue,
+                            Ok(result) => result,
+                        };
+                        let PpaassMessageSplitResult {
+                            id: proxy_message_id,
+                            payload: proxy_message_payload_bytes,
+                            ..
+                        } = proxy_udp_message.split();
+                        let proxy_message_payload: PpaassProxyMessagePayload =
+                            match proxy_message_payload_bytes.try_into() {
+                                Err(e) => continue,
+                                Ok(result) => result,
+                            };
+                        let PpaassProxyMessagePayloadSplitResult {
+                            payload_type: proxy_message_payload_type,
+                            data: proxy_message_payload_data,
+                            source_address: proxy_message_payload_source_address,
+                            target_address: proxy_message_payload_target_address,
+                        } = proxy_message_payload.split();
+                        match proxy_message_payload_type {
+                            PpaassProxyMessagePayloadType::UdpData => {
+                                let socks5_udp_data_response =
+                                    match proxy_message_payload_source_address.address_type() {
+                                        PpaassAddressType::IpV4 => Socks5UdpDataResponse::new(
+                                            0,
+                                            Socks5AddrType::IpV4,
+                                            proxy_message_payload_source_address.host().to_vec(),
+                                            proxy_message_payload_source_address.port(),
+                                            proxy_message_payload_data,
+                                        ),
+                                        PpaassAddressType::IpV6 => Socks5UdpDataResponse::new(
+                                            0,
+                                            Socks5AddrType::IpV6,
+                                            proxy_message_payload_source_address.host().to_vec(),
+                                            proxy_message_payload_source_address.port(),
+                                            proxy_message_payload_data,
+                                        ),
+                                        PpaassAddressType::Domain => Socks5UdpDataResponse::new(
+                                            0,
+                                            Socks5AddrType::Domain,
+                                            proxy_message_payload_source_address.host().to_vec(),
+                                            proxy_message_payload_source_address.port(),
+                                            proxy_message_payload_data,
+                                        ),
+                                    };
+                                let socks5_udp_data_response_bytes: Vec<u8> =
+                                    socks5_udp_data_response.into();
+                                if let Err(e) = client_udp_socket_for_proxy_to_client_relay
+                                    .send(socks5_udp_data_response_bytes.as_slice())
+                                    .await
+                                {
+                                    continue;
+                                };
+                            }
+                            PpaassProxyMessagePayloadType::UdpDataRelayFail => {
+                                continue;
+                            }
+                            _ => {
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
         });
         client_to_proxy_relay.await?;
         proxy_to_client_relay.await?;
@@ -517,7 +810,10 @@ impl Socks5Transport {
         let (mut proxy_framed_write, mut proxy_framed_read) = proxy_framed.split();
         self.status = TransportStatus::Relaying;
         let user_token = self.user_token.clone();
-        let (mut client_tcp_stream_read, mut client_tcp_stream_write) = client_tcp_stream.take().context("Fail to unwrap client tcp stream")?.into_split();
+        let (mut client_tcp_stream_read, mut client_tcp_stream_write) = client_tcp_stream
+            .take()
+            .context("Fail to unwrap client tcp stream")?
+            .into_split();
         let transport_id_for_proxy_to_client_relay = self.id.clone();
         let transport_id_for_client_to_proxy_relay = self.id.clone();
         let connect_message_id_for_client_to_proxy_relay = connect_message_id.clone();
@@ -529,7 +825,10 @@ impl Socks5Transport {
                 let mut read_buf = Vec::<u8>::with_capacity(1024 * 64);
                 match client_tcp_stream_read.read_buf(&mut read_buf).await {
                     Err(e) => {
-                        error!("Fail to read data from agent client because of error, error: {:#?}", e);
+                        error!(
+                            "Fail to read data from agent client because of error, error: {:#?}",
+                            e
+                        );
                         return (client_read_bytes, proxy_write_bytes);
                     }
                     Ok(data_size) => {
@@ -547,7 +846,8 @@ impl Socks5Transport {
                                 PpaassMessagePayloadEncryptionType::random(),
                                 connection_close_message_body.into(),
                             );
-                            if let Err(e) = proxy_framed_write.send(connection_close_message).await {
+                            if let Err(e) = proxy_framed_write.send(connection_close_message).await
+                            {
                                 error!("Fail to send connection close from agent to proxy because of error, error: {:#?}", e);
                                 break;
                             }
@@ -575,11 +875,17 @@ impl Socks5Transport {
                     data_message_body.into(),
                 );
                 if let Err(e) = proxy_framed_write.send(data_message).await {
-                    error!("Fail to send data from agent to proxy because of error, error: {:#?}", e);
+                    error!(
+                        "Fail to send data from agent to proxy because of error, error: {:#?}",
+                        e
+                    );
                     break;
                 }
                 if let Err(e) = proxy_framed_write.flush().await {
-                    error!("Fail to flush data from agent to proxy because of error, error: {:#?}", e);
+                    error!(
+                        "Fail to flush data from agent to proxy because of error, error: {:#?}",
+                        e
+                    );
                     break;
                 }
                 proxy_write_bytes += read_buf_size;
@@ -590,68 +896,75 @@ impl Socks5Transport {
             let mut client_write_bytes = 0;
             let mut proxy_read_bytes = 0;
             loop {
-                info!("Begin the loop to read from proxy for socks 5 transport: [{}]", transport_id_for_proxy_to_client_relay);
+                info!(
+                    "Begin the loop to read from proxy for socks 5 transport: [{}]",
+                    transport_id_for_proxy_to_client_relay
+                );
                 let proxy_message = proxy_framed_read.next().await;
                 match proxy_message {
                     None => {
-                        info!("Noting read from proxy for socks 5 transport: [{}]", transport_id_for_proxy_to_client_relay);
+                        info!(
+                            "Noting read from proxy for socks 5 transport: [{}]",
+                            transport_id_for_proxy_to_client_relay
+                        );
                         return (proxy_read_bytes, client_write_bytes);
                     }
-                    Some(proxy_message) => {
-                        match proxy_message {
-                            Err(e) => {
-                                error!("Fail to read data from proxy because of error, socks 5 transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
-                                return (proxy_read_bytes, client_write_bytes);
-                            }
-                            Ok(proxy_message) => {
-                                let PpaassMessageSplitResult {
-                                    payload,
-                                    ..
-                                } = proxy_message.split();
-                                let payload: Result<PpaassProxyMessagePayload, _> = payload.try_into();
-                                match payload {
-                                    Err(e) => {
-                                        error!("Fail to read data from proxy because of error, socks 5 transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
-                                        return (proxy_read_bytes, client_write_bytes);
-                                    }
-                                    Ok(payload) => {
-                                        let PpaassProxyMessagePayloadSplitResult {
-                                            payload_type: proxy_message_payload_type,
-                                            data: proxy_message_data,
-                                            ..
-                                        } = payload.split();
-                                        match proxy_message_payload_type {
-                                            PpaassProxyMessagePayloadType::TcpDataRelayFail => {
-                                                error!("Fail to read data from proxy because of proxy give data relay fail, socks 5 transport: [{}]", transport_id_for_proxy_to_client_relay);
-                                                continue;
-                                            }
-                                            PpaassProxyMessagePayloadType::TcpData => {
-                                                proxy_read_bytes += proxy_message_data.len();
-                                                debug!("Receive target data for http transport: [{}]\n{}\n", transport_id_for_proxy_to_client_relay, String::from_utf8_lossy(&proxy_message_data));
-                                                if let Err(e) = client_tcp_stream_write.write(&proxy_message_data).await {
-                                                    error!("Fail to send data from agent to client because of error, socks 5 transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
-                                                    return (proxy_read_bytes, client_write_bytes);
-                                                }
-                                                if let Err(e) = client_tcp_stream_write.flush().await {
-                                                    error!("Fail to flush data from agent to client because of error, socks 5 transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
-                                                    return (proxy_read_bytes, client_write_bytes);
-                                                }
-                                                client_write_bytes += proxy_message_data.len();
-                                            }
-                                            PpaassProxyMessagePayloadType::TcpConnectionClose => {
-                                                info!("Socks 5 transport:[{}] close",transport_id_for_proxy_to_client_relay);
+                    Some(proxy_message) => match proxy_message {
+                        Err(e) => {
+                            error!("Fail to read data from proxy because of error, socks 5 transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
+                            return (proxy_read_bytes, client_write_bytes);
+                        }
+                        Ok(proxy_message) => {
+                            let PpaassMessageSplitResult { payload, .. } = proxy_message.split();
+                            let payload: Result<PpaassProxyMessagePayload, _> = payload.try_into();
+                            match payload {
+                                Err(e) => {
+                                    error!("Fail to read data from proxy because of error, socks 5 transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
+                                    return (proxy_read_bytes, client_write_bytes);
+                                }
+                                Ok(payload) => {
+                                    let PpaassProxyMessagePayloadSplitResult {
+                                        payload_type: proxy_message_payload_type,
+                                        data: proxy_message_data,
+                                        ..
+                                    } = payload.split();
+                                    match proxy_message_payload_type {
+                                        PpaassProxyMessagePayloadType::TcpDataRelayFail => {
+                                            error!("Fail to read data from proxy because of proxy give data relay fail, socks 5 transport: [{}]", transport_id_for_proxy_to_client_relay);
+                                            continue;
+                                        }
+                                        PpaassProxyMessagePayloadType::TcpData => {
+                                            proxy_read_bytes += proxy_message_data.len();
+                                            debug!("Receive target data for http transport: [{}]\n{}\n", transport_id_for_proxy_to_client_relay, String::from_utf8_lossy(&proxy_message_data));
+                                            if let Err(e) = client_tcp_stream_write
+                                                .write(&proxy_message_data)
+                                                .await
+                                            {
+                                                error!("Fail to send data from agent to client because of error, socks 5 transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
                                                 return (proxy_read_bytes, client_write_bytes);
                                             }
-                                            other_payload_type => {
-                                                error!("Fail to read data from proxy because of proxy give invalid type: {:?}, socks 5 transport:[{}]", other_payload_type, transport_id_for_proxy_to_client_relay);
-                                                continue;
+                                            if let Err(e) = client_tcp_stream_write.flush().await {
+                                                error!("Fail to flush data from agent to client because of error, socks 5 transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
+                                                return (proxy_read_bytes, client_write_bytes);
                                             }
+                                            client_write_bytes += proxy_message_data.len();
+                                        }
+                                        PpaassProxyMessagePayloadType::TcpConnectionClose => {
+                                            info!(
+                                                "Socks 5 transport:[{}] close",
+                                                transport_id_for_proxy_to_client_relay
+                                            );
+                                            return (proxy_read_bytes, client_write_bytes);
+                                        }
+                                        other_payload_type => {
+                                            error!("Fail to read data from proxy because of proxy give invalid type: {:?}, socks 5 transport:[{}]", other_payload_type, transport_id_for_proxy_to_client_relay);
+                                            continue;
                                         }
                                     }
                                 }
                             }
                         }
-                    }
+                    },
                 }
             }
         });

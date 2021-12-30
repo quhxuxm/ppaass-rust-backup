@@ -311,8 +311,12 @@ impl Socks5UdpDataRequest {
     pub fn data(&self) -> &Vec<u8> {
         &self.data
     }
+}
 
-    pub fn from(bytes: Vec<u8>) -> Result<Self, PpaassAgentError> {
+impl TryFrom<Vec<u8>> for Socks5UdpDataRequest {
+    type Error = PpaassAgentError;
+
+    fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
         let mut bytes_obj = Bytes::from(bytes);
         bytes_obj.get_u16();
         let frag = bytes_obj.get_u8();
@@ -381,32 +385,32 @@ impl Socks5UdpDataResponse {
     }
 }
 
-impl Into<Vec<u8>> for Socks5UdpDataResponse {
-    fn into(self) -> Vec<u8> {
+impl From<Socks5UdpDataResponse> for Vec<u8> {
+    fn from(value: Socks5UdpDataResponse) -> Self {
         let mut result = BytesMut::new();
         result.put_u16(0);
-        result.put_u8(self.frag);
-        match self.addr_type {
+        result.put_u8(value.frag);
+        match value.addr_type {
             Socks5AddrType::IpV4 => {
                 result.put_u8(Socks5AddrType::IpV4.into());
                 for i in 0..4 {
-                    result.put_u8(self.dst_addr[i]);
+                    result.put_u8(value.dst_addr[i]);
                 }
             }
             Socks5AddrType::IpV6 => {
                 result.put_u8(Socks5AddrType::IpV6.into());
                 for i in 0..16 {
-                    result.put_u8(self.dst_addr[i]);
+                    result.put_u8(value.dst_addr[i]);
                 }
             }
             Socks5AddrType::Domain => {
                 result.put_u8(Socks5AddrType::Domain.into());
-                result.put_u8(self.dst_addr.len() as u8);
-                result.put_slice(self.dst_addr.as_slice());
+                result.put_u8(value.dst_addr.len() as u8);
+                result.put_slice(value.dst_addr.as_slice());
             }
         }
-        result.put_u16(self.dst_port);
-        result.put_slice(self.data.as_slice());
+        result.put_u16(value.dst_port);
+        result.put_slice(value.data.as_slice());
         result.to_vec()
     }
 }
