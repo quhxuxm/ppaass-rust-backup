@@ -28,7 +28,6 @@ pub struct Server {
     master_runtime: Runtime,
     worker_runtime: Arc<Runtime>,
     configuration: Arc<AgentConfiguration>,
-    transports: Arc<RwLock<HashMap<String, TransportSnapshot>>>,
 }
 
 impl Server {
@@ -36,34 +35,43 @@ impl Server {
         let mut config_file = File::open(CONFIG_FILE_PATH)?;
         let mut config_file_content = String::new();
         config_file.read_to_string(&mut config_file_content)?;
-        let config = toml::from_str::<AgentConfiguration>(&config_file_content).with_context(|| "Fail to parse agent configuration file.")?;
-        log4rs::init_file(
-            config.log_config().as_ref().unwrap(),
-            Default::default(),
-        ).with_context(|| "Fail to initialize agent configuration file.")?;
+        let config = toml::from_str::<AgentConfiguration>(&config_file_content)
+            .with_context(|| "Fail to parse agent configuration file.")?;
+        log4rs::init_file(config.log_config().as_ref().unwrap(), Default::default())
+            .with_context(|| "Fail to initialize agent configuration file.")?;
         let mut master_runtime_builder = tokio::runtime::Builder::new_multi_thread();
         master_runtime_builder.worker_threads(
-            config.master_thread_number().with_context(|| "Can not get worker threads number from agent configuration.")?,
+            config
+                .master_thread_number()
+                .with_context(|| "Can not get worker threads number from agent configuration.")?,
         );
-        master_runtime_builder.max_blocking_threads(
-            config.max_blocking_threads().with_context(|| "Can not get max blocking threads number from agent configuration.")?,
-        );
+        master_runtime_builder.max_blocking_threads(config.max_blocking_threads().with_context(
+            || "Can not get max blocking threads number from agent configuration.",
+        )?);
         master_runtime_builder.thread_name("agent-master");
         master_runtime_builder.thread_keep_alive(Duration::from_secs(
-            config.thread_timeout().with_context(|| "Can not get thread timeout from agent configuration.")?,
+            config
+                .thread_timeout()
+                .with_context(|| "Can not get thread timeout from agent configuration.")?,
         ));
         master_runtime_builder.enable_all();
-        let master_runtime = master_runtime_builder.build().with_context(|| "Fail to build init tokio runtime.")?;
+        let master_runtime = master_runtime_builder
+            .build()
+            .with_context(|| "Fail to build init tokio runtime.")?;
         let mut worker_runtime_builder = tokio::runtime::Builder::new_multi_thread();
         worker_runtime_builder.worker_threads(
-            config.worker_thread_number().with_context(|| "Can not get relay thread number from agent configuration.")?,
+            config
+                .worker_thread_number()
+                .with_context(|| "Can not get relay thread number from agent configuration.")?,
         );
-        worker_runtime_builder.max_blocking_threads(
-            config.max_blocking_threads().with_context(|| "Can not get max blocking threads number from agent configuration.")?,
-        );
+        worker_runtime_builder.max_blocking_threads(config.max_blocking_threads().with_context(
+            || "Can not get max blocking threads number from agent configuration.",
+        )?);
         worker_runtime_builder.thread_name("agent-worker");
         worker_runtime_builder.thread_keep_alive(Duration::from_secs(
-            config.thread_timeout().with_context(|| "Can not get thread time out from agent configuration.")?,
+            config
+                .thread_timeout()
+                .with_context(|| "Can not get thread time out from agent configuration.")?,
         ));
         worker_runtime_builder.enable_all();
         let worker_runtime = worker_runtime_builder.build()?;
@@ -71,17 +79,18 @@ impl Server {
             master_runtime,
             worker_runtime: Arc::new(worker_runtime),
             configuration: Arc::new(config),
-            transports: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
     pub fn run(&self) -> Result<()> {
-        let agent_private_key = std::fs::read_to_string(Path::new(AGENT_PRIVATE_KEY_PATH)).expect("Fail to read agent private key.");
-        let proxy_public_key = std::fs::read_to_string(Path::new(PROXY_PUBLIC_KEY_PATH)).expect("Fail to read proxy public key.");
+        let agent_private_key = std::fs::read_to_string(Path::new(AGENT_PRIVATE_KEY_PATH))
+            .expect("Fail to read agent private key.");
+        let proxy_public_key = std::fs::read_to_string(Path::new(PROXY_PUBLIC_KEY_PATH))
+            .expect("Fail to read proxy public key.");
         let config = self.configuration.clone();
         let worker_runtime = self.worker_runtime.clone();
-        let (transport_info_sender, mut transport_info_receiver) = tokio::sync::mpsc::channel::<TransportSnapshot>(32);
-        let transports = self.transports.clone();
+        let (transport_info_sender, mut transport_info_receiver) =
+            tokio::sync::mpsc::channel::<TransportSnapshot>(32);
         self.master_runtime.spawn(async move {
             loop {
                 let transport_snapshot = transport_info_receiver.recv().await;
@@ -90,47 +99,13 @@ impl Server {
                         continue;
                     }
                     Some(snapshot) => {
-                        let mut transport_write_lock = transports.write();
-                        match transport_write_lock.as_mut() {
-                            Err(e) => {
-                                error!("Fail to acquire write lock on transports, error: {:#?}", e);
-                                continue;
-                            }
-                            Ok(transports) => {
-                                if snapshot.status == TransportStatus::Closed {
-                                    info!("Remove closed transport, transport: [{}]", snapshot.id);
-                                    transports.remove(snapshot.id.as_str());
-                                    continue;
-                                }
-                                info!("Add transport, transport: [{}]", snapshot.id);
-                                transports.insert(snapshot.id.clone(), snapshot);
-                            }
-                        };
-                    }
-                }
-            }
-        });
-        let transports = self.transports.clone();
-        self.master_runtime.spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(30));
-            loop {
-                println!("######Transport list on proxy: \n\n");
-                {
-                    let transports_read_lock = transports.read();
-                    match transports_read_lock {
-                        Err(e) => {
-                            error!("Fail to acquire transports read lock because of error, error: {:#?}", e);
+                        if snapshot.status == TransportStatus::Closed {
+                            info!("Remove closed transport, transport: [{}]", snapshot.id);
                             continue;
                         }
-                        Ok(lock) => {
-                            for (_, snapshot) in lock.iter() {
-                                println!("{:#?}", snapshot)
-                            }
-                        }
+                        info!("Update transport, transport: [{}]", snapshot.id);
                     }
                 }
-                println!("\n\n");
-                interval.tick().await;
             }
         });
         self.master_runtime.block_on(async move {
@@ -213,7 +188,8 @@ impl Server {
     }
 
     pub fn shutdown(self) {
-        self.master_runtime.shutdown_timeout(Duration::from_secs(20));
+        self.master_runtime
+            .shutdown_timeout(Duration::from_secs(20));
         info!("Graceful shutdown ppaass server.")
     }
 }
