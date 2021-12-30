@@ -5,15 +5,24 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [profile.release]
-lto = "fat"
 opt-level = 3
+debug = false
+split-debuginfo = '...'  # Platform-specific.
+debug-assertions = false
+overflow-checks = false
+lto = false
+panic = 'unwind'
+incremental = false
+codegen-units = 16
+rpath = false
+
 [[bin]]
 name = "ppaass-agent"
 path = "src/main.rs"
 [dependencies]
 ppaass_common = { path = "../common", package = "common" }
-tokio = {version="1.15.0", features=["full"]}
-uuid = {version="0.8.2", features=["v4"]}
+tokio = { version = "1.15.0", features = ["full"] }
+uuid = { version = "0.8.2", features = ["v4"] }
 thiserror = "1.0.30"
 anyhow = "1.0.51"
 tokio-util = { version = "0.6.9", features = ["codec"] }
@@ -21,12 +30,12 @@ futures = "0.3.19"
 futures-util = "0.3.19"
 futures-sink = "0.3.19"
 log = "0.4.14"
-serde="1.0.132"
-serde_derive="1.0.132"
-toml="0.5.8"
-log4rs= { version="1.0.0", features=["gzip"] }
-httpcodec="0.2.3"
-bytecodec="0.4.15"
+serde = "1.0.132"
+serde_derive = "1.0.132"
+toml = "0.5.8"
+log4rs = { version = "1.0.0", features = ["gzip"] }
+httpcodec = "0.2.3"
+bytecodec = "0.4.15"
 url = "2.2.2"
 bytes = "1.1.0"
 async-trait = "0.1.52"

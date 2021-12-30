@@ -1,6 +1,5 @@
 use std::io::{Error, ErrorKind};
 
-use anyhow::anyhow;
 use bytes::{BufMut, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
 

@@ -495,8 +495,7 @@ impl Socks5Transport {
                 if let Err(e) = client_udp_socket {
                     return;
                 }
-                let client_udp_socket=client_udp_socket.unwrap();
-
+                let client_udp_socket = client_udp_socket.unwrap();
             }
         });
         let proxy_to_client_relay = tokio::spawn(async move {
