@@ -258,9 +258,9 @@ impl Transport {
         let user_token = self.user_token.clone().take().context("Can not unwrap user token.")?;
         let user_token_for_target_to_proxy_relay = user_token.clone();
         let (mut agent_write_part, mut agent_read_part) = agent_stream_framed.split();
-       let target_udp_socket=Arc::new(target_udp_socket);
-      let target_udp_socket_for_proxy_to_target_relay=  target_udp_socket.clone();
-      let target_udp_socket_for_target_to_proxy_relay=  target_udp_socket.clone();
+        let target_udp_socket = Arc::new(target_udp_socket);
+        let target_udp_socket_for_proxy_to_target_relay = target_udp_socket.clone();
+        let target_udp_socket_for_target_to_proxy_relay = target_udp_socket.clone();
         let proxy_to_target_relay = tokio::spawn(async move {
             loop {
                 let mut proxy_to_target_write_bytes = 0usize;
