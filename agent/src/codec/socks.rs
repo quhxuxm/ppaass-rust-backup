@@ -1,10 +1,13 @@
 use std::io::{Error, ErrorKind};
 
-use bytes::{BufMut, BytesMut};
+use bytes::{Buf, BufMut, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::error::PpaassAgentError;
-use crate::protocol::socks::{Socks5AddrType, Socks5AuthMethod, Socks5AuthRequest, Socks5AuthResponse, Socks5ConnectRequest, Socks5ConnectRequestType, Socks5ConnectResponse};
+use crate::protocol::socks::{
+    Socks5AddrType, Socks5AuthMethod, Socks5AuthRequest, Socks5AuthResponse, Socks5ConnectRequest,
+    Socks5ConnectRequestType, Socks5ConnectResponse,
+};
 
 pub(crate) struct Socks5AuthCodec {}
 
@@ -22,22 +25,15 @@ impl Decoder for Socks5AuthCodec {
         if src.len() < 2 {
             return Ok(None);
         }
-        let version = src[0];
+        let version = src.get_u8();
         if version != 5 {
             return Err(PpaassAgentError::FailToDecodeSocks5Protocol);
         }
-        let methods_number = src[1];
-        if methods_number as usize <= 0 {
-            return Err(PpaassAgentError::FailToDecodeSocks5Protocol);
-        }
-        if src.len() < (2 + methods_number) as usize {
-            return Ok(None);
-        }
+        let methods_number = src.get_u8();
         let mut methods = Vec::<Socks5AuthMethod>::new();
-        (0..methods_number).for_each(|i| {
-            let method_byte = src[(2 + i) as usize];
-            methods.push(Socks5AuthMethod::from(method_byte));
-        });
+        for i in 0..methods_number {
+            methods.push(Socks5AuthMethod::from(src.get_u8()));
+        }
         Ok(Some(Socks5AuthRequest::new(methods_number, methods)))
     }
 }
@@ -68,61 +64,38 @@ impl Decoder for Socks5ConnectCodec {
         if src.len() < 4 {
             return Ok(None);
         }
-        let version = src[0];
+        let version = src.get_u8();
         if version != 5 {
             return Err(PpaassAgentError::FailToDecodeSocks5Protocol);
         }
-        let request_type: Socks5ConnectRequestType = src[1].try_into()?;
-        let addr_type: Socks5AddrType = src[3].try_into()?;
-        let mut host_bytes_number = 0usize;
+        let request_type: Socks5ConnectRequestType = src.get_u8().try_into()?;
+        src.get_u8();
+        let addr_type: Socks5AddrType = src.get_u8().try_into()?;
         let host = match addr_type {
             Socks5AddrType::IpV4 => {
-                host_bytes_number = 4;
-                if src.len() < 4 + host_bytes_number {
-                    return Ok(None);
+                let mut host_bytes = Vec::<u8>::new();
+                for i in 0..4 {
+                    host_bytes.push(src.get_u8());
                 }
-                let mut ipv4_addr = Vec::new();
-                (0..host_bytes_number).for_each(|i| {
-                    ipv4_addr.push(src[4 + i]);
-                });
-                ipv4_addr
+                host_bytes
             }
             Socks5AddrType::IpV6 => {
-                host_bytes_number = 16;
-                if src.len() < 4 + host_bytes_number {
-                    return Ok(None);
+                let mut host_bytes = Vec::<u8>::new();
+                for i in 0..16 {
+                    host_bytes.push(src.get_u8());
                 }
-                let mut ipv6_addr = Vec::new();
-                (0..host_bytes_number).for_each(|i| {
-                    ipv6_addr.push(src[4 + i]);
-                });
-                ipv6_addr
+                host_bytes
             }
             Socks5AddrType::Domain => {
-                if src.len() < 4 + 1 {
-                    return Ok(None);
+                let domain_name_length = src.get_u8();
+                let mut host_bytes = Vec::<u8>::new();
+                for i in 0..domain_name_length {
+                    host_bytes.push(src.get_u8());
                 }
-                let domain_name_length = src[4];
-                host_bytes_number = (domain_name_length as usize);
-                if src.len() < 4 + 1 + host_bytes_number {
-                    return Ok(None);
-                }
-                let mut domain_name = Vec::new();
-                (0..host_bytes_number).for_each(|i| {
-                    domain_name.push(src[5 + i]);
-                });
-                host_bytes_number = host_bytes_number + 1;
-                domain_name
+                host_bytes
             }
         };
-        if src.len() < 4 + host_bytes_number + 2 {
-            return Ok(None);
-        }
-        let port_bytes: [u8; 2] = [src[4 + host_bytes_number], src[4 + host_bytes_number + 1]];
-        let port = u16::from_be_bytes(port_bytes);
-        if port as usize <= 0 {
-            return Err(PpaassAgentError::FailToDecodeSocks5Protocol);
-        }
+        let port = src.get_u16();
         Ok(Some(Socks5ConnectRequest::new(
             request_type,
             addr_type,

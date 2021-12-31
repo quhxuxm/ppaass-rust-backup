@@ -524,6 +524,8 @@ impl Socks5Transport {
                                                     agent_bind_udp_socket.local_addr()?;
                                                 let agent_bind_udp_socket_address: PpaassAddress =
                                                     agent_bind_udp_socket_address.into();
+//                                                let client_bind_udp_address: SocketAddr = source_address.try_into()?;
+//                                                agent_bind_udp_socket.connect(client_bind_udp_address).await?;
                                                 info!("Udp associate, agent use this address to receive udp message : {:?}", agent_bind_udp_socket_address);
                                                 let socks5_udp_associate_success_response =
                                                     Socks5ConnectResponse::new(
@@ -770,6 +772,13 @@ impl Socks5Transport {
                             source_address: proxy_message_payload_source_address,
                             target_address: proxy_message_payload_target_address,
                         } = proxy_message_payload.split();
+                        info!(
+                            "Receive data from target: {}",
+                            match String::from_utf8(proxy_message_payload_data.clone()) {
+                                Err(e) => format!("\n{:#?}\n", e),
+                                Ok(result) => result,
+                            }
+                        );
                         match proxy_message_payload_type {
                             PpaassProxyMessagePayloadType::UdpData => {
                                 let udp_client_source_address = udp_client_source_address.clone();
@@ -806,10 +815,14 @@ impl Socks5Transport {
                                         }
                                         Ok(result) => result,
                                     };
+                                info!("Send target message to client, client udp socket: {:?}", agent_bind_udp_socket_p2c);
                                 if let Err(e) = agent_bind_udp_socket_p2c
-                                    .send_to(
-                                        socks5_udp_data_response_bytes.as_slice(),
-                                        udp_client_source_sockst_address,
+//                                    .send_to(
+//                                        socks5_udp_data_response_bytes.as_slice(),
+//                                        udp_client_source_sockst_address,
+//                                    )
+                                    .send(
+                                        socks5_udp_data_response_bytes.as_slice()
                                     )
                                     .await
                                 {
