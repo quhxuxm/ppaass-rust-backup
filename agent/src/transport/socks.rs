@@ -690,10 +690,8 @@ impl Socks5Transport {
                 } = proxy_message_payload.split();
                 info!(
                     "Receive data from target: {}",
-                    match String::from_utf8(proxy_message_payload_data.clone()) {
-                        Err(e) => format!("\n{:#?}\n", e),
-                        Ok(result) => result,
-                    }
+                    String::from_utf8(proxy_message_payload_data.clone())
+                        .unwrap_or_else(|e| format!("{:#?}", e))
                 );
                 match proxy_message_payload_type {
                     PpaassProxyMessagePayloadType::UdpData => {
