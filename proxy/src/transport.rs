@@ -367,9 +367,10 @@ impl Transport {
                 }
             }
         });
+        let target_to_proxy_buffer_size = self.configuration.buffer_size().unwrap_or(64 * 1024);
         let target_to_proxy_relay = tokio::spawn(async move {
             loop {
-                let mut buf = [0u8; 65536];
+                let mut buf = Vec::<u8>::with_capacity(target_to_proxy_buffer_size);
                 let udp_relay_recv_result = target_udp_socket_for_target_to_proxy_relay
                     .recv_from(&mut buf)
                     .await;
@@ -412,6 +413,8 @@ impl Transport {
         target_tcp_stream: TcpStream,
     ) -> Result<()> {
         if self.status != TransportStatus::Initialized {
+            error!("Invalid tcp transport status, tcp transport: [{}], current status: [{:?}], expect status: [{:?}]", self.id,
+            self.status, TransportStatus::Initialized);
             return Err(PpaassProxyError::InvalidTcpTransportStatus(
                 self.id.clone(),
                 TransportStatus::Initialized,
@@ -516,13 +519,14 @@ impl Transport {
                 }
             }
         });
+        let target_to_proxy_buffer_size = self.configuration.buffer_size().unwrap_or(64 * 1024);
         let target_to_proxy_relay = tokio::spawn(async move {
             loop {
                 info!(
                     "Begin the loop for tcp relay from target to proxy for tcp transport: [{}]",
                     transport_id_for_target_to_proxy_relay
                 );
-                let mut target_read_buf = Vec::<u8>::with_capacity(1024 * 64);
+                let mut target_read_buf = Vec::<u8>::with_capacity(target_to_proxy_buffer_size);
                 let read_size = match target_read.read_buf(&mut target_read_buf).await {
                     Err(e) => {
                         error!("Fail to read target data because of error, tcp transport: [{}] error: {:#?}", transport_id_for_target_to_proxy_relay, e);
@@ -615,7 +619,7 @@ impl Transport {
             id: self.id.clone(),
             user_token: self.user_token.clone(),
             status: self.status,
-            agent_remote_address: self.agent_remote_address.clone(),
+            agent_remote_address: self.agent_remote_address,
             source_address: self.source_address.clone(),
             target_address: self.target_address.clone(),
             start_time: self.start_time,
