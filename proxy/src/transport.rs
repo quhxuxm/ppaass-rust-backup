@@ -112,7 +112,8 @@ impl Transport {
         self.publish_transport_snapshot().await?;
         let ppaass_message_codec =
             PpaassMessageCodec::new(rsa_public_key.into(), rsa_private_key.into());
-        let agent_stream_framed = Framed::with_capacity(agent_stream, ppaass_message_codec, 65536);
+        let agent_stream_framed =
+            Framed::with_capacity(agent_stream, ppaass_message_codec, 64 * 1024);
         // Initialize the target edge stream
         let init_result = self.init(agent_stream_framed).await?;
         if init_result.is_none() {
