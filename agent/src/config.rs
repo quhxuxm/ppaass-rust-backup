@@ -1,6 +1,7 @@
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 
+pub const DEFAULT_BUFFER_SIZE: usize = 128 * 1024;
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AgentConfiguration {
     port: Option<u16>,

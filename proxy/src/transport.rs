@@ -24,7 +24,7 @@ use ppaass_common::common::{
 };
 use ppaass_common::generate_uuid;
 
-use crate::config::ProxyConfiguration;
+use crate::config::{ProxyConfiguration, DEFAULT_BUFFER_SIZE};
 use crate::error::PpaassProxyError;
 
 type AgentStreamFramed = Framed<TcpStream, PpaassMessageCodec>;
@@ -117,12 +117,16 @@ impl Transport {
         let ppaass_message_codec = PpaassMessageCodec::new(
             rsa_public_key.into(),
             rsa_private_key.into(),
-            self.configuration.buffer_size().unwrap_or(128 * 1024),
+            self.configuration
+                .buffer_size()
+                .unwrap_or(DEFAULT_BUFFER_SIZE),
         );
         let agent_stream_framed = Framed::with_capacity(
             agent_stream,
             ppaass_message_codec,
-            self.configuration.buffer_size().unwrap_or(1024 * 64),
+            self.configuration
+                .buffer_size()
+                .unwrap_or(DEFAULT_BUFFER_SIZE),
         );
         // Initialize the target edge stream
         let init_result = self.init(agent_stream_framed).await?;
@@ -367,7 +371,10 @@ impl Transport {
                 }
             }
         });
-        let target_to_proxy_buffer_size = self.configuration.buffer_size().unwrap_or(64 * 1024);
+        let target_to_proxy_buffer_size = self
+            .configuration
+            .buffer_size()
+            .unwrap_or(DEFAULT_BUFFER_SIZE);
         let target_to_proxy_relay = tokio::spawn(async move {
             loop {
                 let mut buf = Vec::<u8>::with_capacity(target_to_proxy_buffer_size);
@@ -519,7 +526,10 @@ impl Transport {
                 }
             }
         });
-        let target_to_proxy_buffer_size = self.configuration.buffer_size().unwrap_or(64 * 1024);
+        let target_to_proxy_buffer_size = self
+            .configuration
+            .buffer_size()
+            .unwrap_or(DEFAULT_BUFFER_SIZE);
         let target_to_proxy_relay = tokio::spawn(async move {
             loop {
                 info!(
