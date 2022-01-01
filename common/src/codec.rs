@@ -55,18 +55,14 @@ impl Decoder for PpaassMessageCodec {
         let original_payload = match payload_encryption_type {
             PpaassMessagePayloadEncryptionType::Plain => encrypted_payload,
             PpaassMessagePayloadEncryptionType::Blowfish => {
-                let original_encryption_token = self
-                    .rsa_crypto
-                    .decrypt(rsa_encrypted_payload_encryption_token.as_slice())?;
+                let original_encryption_token = self.rsa_crypto.decrypt(rsa_encrypted_payload_encryption_token.as_slice())?;
                 decrypt_with_blowfish(
                     original_encryption_token.as_slice(),
                     encrypted_payload.as_slice(),
                 )
             }
             PpaassMessagePayloadEncryptionType::Aes => {
-                let original_encryption_token = self
-                    .rsa_crypto
-                    .decrypt(rsa_encrypted_payload_encryption_token.as_slice())?;
+                let original_encryption_token = self.rsa_crypto.decrypt(rsa_encrypted_payload_encryption_token.as_slice())?;
                 decrypt_with_aes(
                     original_encryption_token.as_slice(),
                     encrypted_payload.as_slice(),
@@ -105,9 +101,7 @@ impl Encoder<PpaassMessage> for PpaassMessageCodec {
             payload,
             ..
         } = original_message.split();
-        let rsa_encrypted_payload_encryption_token = self
-            .rsa_crypto
-            .encrypt(payload_encryption_token.as_slice())?;
+        let rsa_encrypted_payload_encryption_token = self.rsa_crypto.encrypt(payload_encryption_token.as_slice())?;
         let encrypted_payload = match payload_encryption_type {
             PpaassMessagePayloadEncryptionType::Plain => payload,
             PpaassMessagePayloadEncryptionType::Blowfish => {
@@ -129,8 +123,7 @@ impl Encoder<PpaassMessage> for PpaassMessageCodec {
         );
         let result_bytes: Vec<u8> = encrypted_message.into();
         let lz4_compressed_bytes = compress(result_bytes.as_slice(), None, true)?;
-        self.length_delimited_codec
-            .encode(Bytes::from(lz4_compressed_bytes), dst)?;
+        self.length_delimited_codec.encode(Bytes::from(lz4_compressed_bytes), dst)?;
         Ok(())
     }
 }
