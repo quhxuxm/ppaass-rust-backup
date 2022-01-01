@@ -275,8 +275,12 @@ impl HttpTransport {
             IpAddr::V6(addr) => addr.octets().to_vec(),
         };
         let client_port = client_address.port();
-        let mut proxy_framed =
-            Self::create_proxy_framed(rsa_public_key, rsa_private_key, proxy_stream);
+        let mut proxy_framed = Self::create_proxy_framed(
+            rsa_public_key,
+            rsa_private_key,
+            proxy_stream,
+            self.configuration.buffer_size().unwrap_or(64 * 1024),
+        );
         let source_address = PpaassAddress::new(client_ip, client_port, PpaassAddressType::IpV4);
         let target_address: PpaassAddress =
             format!("{}:{}", target_host, target_port).try_into()?;

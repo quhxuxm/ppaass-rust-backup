@@ -24,6 +24,7 @@ use ppaass_common::common::{
 };
 use ppaass_common::generate_uuid;
 
+use crate::config::ProxyConfiguration;
 use crate::error::PpaassProxyError;
 
 type AgentStreamFramed = Framed<TcpStream, PpaassMessageCodec>;
@@ -60,6 +61,7 @@ pub(crate) struct Transport {
     source_address: Option<PpaassAddress>,
     target_address: Option<PpaassAddress>,
     snapshot_sender: Sender<TransportSnapshot>,
+    configuration: Arc<ProxyConfiguration>,
 }
 
 struct InitResult {
@@ -72,6 +74,7 @@ impl Transport {
     pub fn new(
         agent_remote_address: SocketAddr,
         snapshot_sender: Sender<TransportSnapshot>,
+        configuration: Arc<ProxyConfiguration>,
     ) -> Result<Self> {
         Ok(Self {
             id: generate_uuid(),
@@ -87,6 +90,7 @@ impl Transport {
             source_address: None,
             target_address: None,
             snapshot_sender,
+            configuration,
         })
     }
 
@@ -110,10 +114,16 @@ impl Transport {
         rsa_private_key: impl Into<String>,
     ) -> Result<()> {
         self.publish_transport_snapshot().await?;
-        let ppaass_message_codec =
-            PpaassMessageCodec::new(rsa_public_key.into(), rsa_private_key.into());
-        let agent_stream_framed =
-            Framed::with_capacity(agent_stream, ppaass_message_codec, 64 * 1024);
+        let ppaass_message_codec = PpaassMessageCodec::new(
+            rsa_public_key.into(),
+            rsa_private_key.into(),
+            self.configuration.buffer_size().unwrap_or(128 * 1024),
+        );
+        let agent_stream_framed = Framed::with_capacity(
+            agent_stream,
+            ppaass_message_codec,
+            self.configuration.buffer_size().unwrap_or(1024 * 64),
+        );
         // Initialize the target edge stream
         let init_result = self.init(agent_stream_framed).await?;
         if init_result.is_none() {

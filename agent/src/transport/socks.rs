@@ -264,6 +264,7 @@ impl Socks5Transport {
                                             rsa_public_key,
                                             rsa_private_key,
                                             proxy_stream,
+                                            self.configuration.buffer_size().unwrap_or(64 * 1024),
                                         );
                                         if let Err(e) = proxy_framed.send(connect_message).await {
                                             error!("Fail to send connect to proxy, because of error, socks5 transport: [{}], error: {:#?}", self.id, e);
@@ -393,6 +394,7 @@ impl Socks5Transport {
                                             rsa_public_key,
                                             rsa_private_key,
                                             proxy_stream,
+                                            self.configuration.buffer_size().unwrap_or(64 * 1024),
                                         );
                                         let udp_source_address = PpaassAddress::new(
                                             source_address.host().to_vec(),
@@ -813,15 +815,16 @@ impl Socks5Transport {
                                         }
                                         Ok(result) => result,
                                     };
-                                info!("Send target message to client, client udp socket: {:?}", agent_bind_udp_socket_p2c);
+                                info!(
+                                    "Send target message to client, client udp socket: {:?}",
+                                    agent_bind_udp_socket_p2c
+                                );
                                 if let Err(e) = agent_bind_udp_socket_p2c
-//                                    .send_to(
-//                                        socks5_udp_data_response_bytes.as_slice(),
-//                                        udp_client_source_sockst_address,
-//                                    )
-                                    .send(
-                                        socks5_udp_data_response_bytes.as_slice()
-                                    )
+                                    //                                    .send_to(
+                                    //                                        socks5_udp_data_response_bytes.as_slice(),
+                                    //                                        udp_client_source_sockst_address,
+                                    //                                    )
+                                    .send(socks5_udp_data_response_bytes.as_slice())
                                     .await
                                 {
                                     error!("Fail to send udp data from proxy to client for socks 5 transport, transport: [{}], error: {:#?}", transport_id_for_proxy_to_client_relay, e);

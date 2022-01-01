@@ -15,9 +15,9 @@ pub struct PpaassMessageCodec {
 }
 
 impl PpaassMessageCodec {
-    pub fn new(public_key: String, private_key: String) -> Self {
+    pub fn new(public_key: String, private_key: String, buffer_size: usize) -> Self {
         let mut length_delimited_codec_builder = LengthDelimitedCodec::builder();
-        length_delimited_codec_builder.max_frame_length(128 * 1024);
+        length_delimited_codec_builder.max_frame_length(buffer_size);
         length_delimited_codec_builder.length_field_length(8);
         let length_delimited_codec = length_delimited_codec_builder.new_codec();
         Self {
