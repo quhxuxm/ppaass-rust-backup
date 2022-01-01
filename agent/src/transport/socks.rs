@@ -524,8 +524,6 @@ impl Socks5Transport {
                                                     agent_bind_udp_socket.local_addr()?;
                                                 let agent_bind_udp_socket_address: PpaassAddress =
                                                     agent_bind_udp_socket_address.into();
-//                                                let client_bind_udp_address: SocketAddr = source_address.try_into()?;
-//                                                agent_bind_udp_socket.connect(client_bind_udp_address).await?;
                                                 info!("Udp associate, agent use this address to receive udp message : {:?}", agent_bind_udp_socket_address);
                                                 let socks5_udp_associate_success_response =
                                                     Socks5ConnectResponse::new(

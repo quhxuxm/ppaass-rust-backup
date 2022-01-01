@@ -15,9 +15,13 @@ pub struct PpaassMessageCodec {
 impl PpaassMessageCodec {
     pub fn new(
         public_key: String, private_key: String, ) -> Self {
+        let mut length_delimited_codec_builder=LengthDelimitedCodec::builder();
+        length_delimited_codec_builder.max_frame_length(128);
+        length_delimited_codec_builder.length_field_length(4);
+        let length_delimited_codec=length_delimited_codec_builder.new_codec();
         Self {
             rsa_crypto: RsaCrypto::new(public_key, private_key),
-            length_delimited_codec: LengthDelimitedCodec::new(),
+            length_delimited_codec,
         }
     }
 }
