@@ -450,14 +450,17 @@ impl Transport {
                     transport_id_for_proxy_to_target_relay
                 );
                 let agent_tcp_data_message = agent_read_part.next().await;
-                if agent_tcp_data_message.is_none() {
-                    info!(
-                        "Nothing to read from agent, tcp transport: [{}]",
-                        transport_id_for_proxy_to_target_relay
-                    );
-                    return;
-                }
-                let agent_tcp_data_message = agent_tcp_data_message.unwrap();
+                let agent_tcp_data_message = match agent_tcp_data_message {
+                    None => {
+                        info!(
+                            "Nothing to read from agent, tcp transport: [{}]",
+                            transport_id_for_proxy_to_target_relay
+                        );
+                        return;
+                    }
+                    Some(result) => result,
+                };
+
                 if let Err(e) = agent_tcp_data_message {
                     error!("Fail to decode agent message because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
                     return;
@@ -503,7 +506,11 @@ impl Transport {
                         );
                         return;
                     }
-                    _ => {
+                    payload_type => {
+                        error!(
+                            "Invalid payload type received, received payload type: [{:?}]",
+                            payload_type
+                        );
                         return;
                     }
                 }
@@ -551,7 +558,6 @@ impl Transport {
                     };
                     return;
                 }
-
                 debug!(
                     "Receive target data for tcp transport: [{}]\n{}\n",
                     transport_id_for_target_to_proxy_relay,
@@ -586,9 +592,7 @@ impl Transport {
             }
         });
         target_to_proxy_relay.await?;
-
         proxy_to_target_relay.await?;
-
         self.publish_transport_snapshot().await?;
         Ok(())
     }
