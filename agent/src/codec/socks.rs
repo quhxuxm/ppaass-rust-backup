@@ -26,7 +26,7 @@ impl Decoder for Socks5AuthCodec {
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         info!(
             "Socks5 authenticate command, transport: [{}], command: {:?}",
-            self.transport_id, src
+            self.transport_id,  src.to_vec()
         );
         if src.len() < 2 {
             return Ok(None);
@@ -71,7 +71,7 @@ impl Decoder for Socks5ConnectCodec {
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         info!(
             "Socks5 connect command, transport: [{}], command: {:?}",
-            self.transport_id, src
+            self.transport_id, src.to_vec()
         );
         if src.len() < 4 {
             return Ok(None);

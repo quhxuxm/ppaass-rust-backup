@@ -24,7 +24,7 @@ use ppaass_common::common::{
 };
 use ppaass_common::generate_uuid;
 
-use crate::config::{ProxyConfiguration, DEFAULT_BUFFER_SIZE};
+use crate::config::{ProxyConfiguration, DEFAULT_TCP_BUFFER_SIZE, DEFAULT_UDP_BUFFER_SIZE};
 use crate::error::PpaassProxyError;
 
 type AgentStreamFramed = Framed<TcpStream, PpaassMessageCodec>;
@@ -119,14 +119,14 @@ impl Transport {
             rsa_private_key.into(),
             self.configuration
                 .buffer_size()
-                .unwrap_or(DEFAULT_BUFFER_SIZE),
+                .unwrap_or(DEFAULT_TCP_BUFFER_SIZE),
         );
         let agent_stream_framed = Framed::with_capacity(
             agent_stream,
             ppaass_message_codec,
             self.configuration
                 .buffer_size()
-                .unwrap_or(DEFAULT_BUFFER_SIZE),
+                .unwrap_or(DEFAULT_TCP_BUFFER_SIZE),
         );
         // Initialize the target edge stream
         let init_result = self.init(agent_stream_framed).await?;
@@ -322,8 +322,8 @@ impl Transport {
                 }
                 let agent_udp_data_message = agent_udp_data_message.unwrap();
                 if let Err(e) = agent_udp_data_message {
-                    error!("Fail to decode agent message because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
-                    continue;
+                    error!("Fail to decode agent udp message because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
+                    return;
                 }
                 let agent_udp_data_message = agent_udp_data_message.unwrap();
                 let PpaassMessageSplitResult {
@@ -374,7 +374,7 @@ impl Transport {
         let target_to_proxy_buffer_size = self
             .configuration
             .buffer_size()
-            .unwrap_or(DEFAULT_BUFFER_SIZE);
+            .unwrap_or(DEFAULT_TCP_BUFFER_SIZE);
         let source_address_for_target_to_proxy_relay = match self.source_address.clone().take() {
             None => return Ok(()),
             Some(r) => r,
@@ -383,7 +383,7 @@ impl Transport {
             loop {
                 let source_address_for_target_to_proxy_relay =
                     source_address_for_target_to_proxy_relay.clone();
-                let mut buf = Vec::<u8>::with_capacity(target_to_proxy_buffer_size);
+                let mut buf = [0u8; DEFAULT_UDP_BUFFER_SIZE];
                 let udp_relay_recv_result = target_udp_socket_for_target_to_proxy_relay
                     .recv_from(&mut buf)
                     .await;
@@ -477,7 +477,7 @@ impl Transport {
                     Some(result) => result,
                 };
                 if let Err(e) = agent_tcp_data_message {
-                    error!("Fail to decode agent message because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
+                    error!("Fail to decode agent tcp message because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
                     return;
                 }
                 let agent_tcp_data_message = agent_tcp_data_message.unwrap();
@@ -534,7 +534,7 @@ impl Transport {
         let target_to_proxy_buffer_size = self
             .configuration
             .buffer_size()
-            .unwrap_or(DEFAULT_BUFFER_SIZE);
+            .unwrap_or(DEFAULT_TCP_BUFFER_SIZE);
         let target_to_proxy_relay = tokio::spawn(async move {
             loop {
                 info!(

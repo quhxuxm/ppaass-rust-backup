@@ -27,7 +27,7 @@ use ppaass_common::proxy::{PpaassProxyMessagePayload, PpaassProxyMessagePayloadT
 
 use crate::codec::http::HttpCodec;
 use crate::common::ProxyAddress;
-use crate::config::{AgentConfiguration, DEFAULT_BUFFER_SIZE};
+use crate::config::{AgentConfiguration, DEFAULT_TCP_BUFFER_SIZE};
 use crate::error::PpaassAgentError;
 use crate::transport::common::{
     Transport, TransportSnapshot, TransportSnapshotType, TransportStatus,
@@ -258,7 +258,7 @@ impl HttpTransport {
             rsa_public_key,
             rsa_private_key,
             proxy_stream,
-            self.configuration.buffer_size().unwrap_or(DEFAULT_BUFFER_SIZE),
+            self.configuration.buffer_size().unwrap_or(DEFAULT_TCP_BUFFER_SIZE),
         );
         let source_address = PpaassAddress::new(client_ip, client_port, PpaassAddressType::IpV4);
         let target_address: PpaassAddress = format!("{}:{}", target_host, target_port).try_into()?;
@@ -412,7 +412,7 @@ impl HttpTransport {
                 }
             }
             loop {
-                let mut read_buf = Vec::<u8>::with_capacity(DEFAULT_BUFFER_SIZE);
+                let mut read_buf = Vec::<u8>::with_capacity(DEFAULT_TCP_BUFFER_SIZE);
                 let data_size = match client_tcp_stream_read.read_buf(&mut read_buf).await {
                     Err(e) => {
                         error!(

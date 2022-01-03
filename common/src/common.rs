@@ -25,7 +25,7 @@ impl TryFrom<u8> for PpaassAddressType {
             1 => Ok(IpV4),
             2 => Ok(IpV6),
             3 => Ok(Domain),
-            _ => Err(PpaassCommonError::FailToParsePpaassAddressType(value))
+            _ => Err(PpaassCommonError::FailToParsePpaassAddressType(value)),
         }
     }
 }
@@ -35,7 +35,7 @@ impl From<PpaassAddressType> for u8 {
         match value {
             IpV4 => 1,
             IpV6 => 2,
-            Domain => 3
+            Domain => 3,
         }
     }
 }
@@ -58,25 +58,17 @@ impl TryFrom<String> for PpaassAddress {
         }
         let host_str = address_parts[0];
         let (host, address_type) = match Ipv4Addr::from_str(host_str) {
-            Ok(t) => {
-                (t.octets().into(), PpaassAddressType::IpV4)
-            }
-            Err(e) => {
-                match Ipv6Addr::from_str(host_str) {
-                    Ok(t) => {
-                        (t.octets().into(), PpaassAddressType::IpV6)
-                    }
-                    Err(e) => {
-                        (host_str.as_bytes().into(), PpaassAddressType::Domain)
-                    }
-                }
-            }
+            Ok(t) => (t.octets().into(), PpaassAddressType::IpV4),
+            Err(e) => match Ipv6Addr::from_str(host_str) {
+                Ok(t) => (t.octets().into(), PpaassAddressType::IpV6),
+                Err(e) => (host_str.as_bytes().into(), PpaassAddressType::Domain),
+            },
         };
         let port = match address_parts[1].parse::<u16>() {
             Err(e) => {
                 return Err(PpaassCommonError::FailToParsePpaassAddressFromString(value));
             }
-            Ok(p) => p
+            Ok(p) => p,
         };
         Ok(Self {
             host,
@@ -130,7 +122,10 @@ impl TryFrom<&PpaassAddress> for SocketAddr {
                 }
                 let mut ipv4_byte_array: [u8; 4] = [0; 4];
                 ipv4_byte_array.clone_from_slice(&value.host[..4]);
-                Ok(SocketAddr::new(IpAddr::V4(Ipv4Addr::from(ipv4_byte_array)), value.port))
+                Ok(SocketAddr::new(
+                    IpAddr::V4(Ipv4Addr::from(ipv4_byte_array)),
+                    value.port,
+                ))
             }
             PpaassAddressType::IpV6 => {
                 if value.host.len() < 16 {
@@ -138,11 +133,20 @@ impl TryFrom<&PpaassAddress> for SocketAddr {
                 }
                 let mut ipv6_byte_array: [u8; 16] = [0; 16];
                 ipv6_byte_array.clone_from_slice(&value.host[..16]);
-                Ok(SocketAddr::new(IpAddr::V6(Ipv6Addr::from(ipv6_byte_array)), value.port()))
+                Ok(SocketAddr::new(
+                    IpAddr::V6(Ipv6Addr::from(ipv6_byte_array)),
+                    value.port(),
+                ))
             }
             PpaassAddressType::Domain => {
-                let socket_addresses = format!("{}:{}", String::from_utf8(value.host.to_vec()).map_err(|e|
-                    PpaassCommonError::FailToParsePpaassDomainAddress)?, value.port).to_socket_addrs().map_err(|e| PpaassCommonError::FailToParsePpaassDomainAddress)?;
+                let socket_addresses = format!(
+                    "{}:{}",
+                    String::from_utf8(value.host.to_vec())
+                        .map_err(|e| PpaassCommonError::FailToParsePpaassDomainAddress)?,
+                    value.port
+                )
+                .to_socket_addrs()
+                .map_err(|e| PpaassCommonError::FailToParsePpaassDomainAddress)?;
                 let socket_addresses: Vec<_> = socket_addresses.collect();
                 if socket_addresses.is_empty() {
                     return Err(PpaassCommonError::FailToParsePpaassDomainAddress);
@@ -163,43 +167,40 @@ impl TryFrom<Vec<u8>> for PpaassAddress {
         match address_type {
             IpV4 => {
                 let mut host = Vec::<u8>::new();
-                for i in 0..4 {
+                (0..4).for_each(|_| {
                     host.push(value.get_u8());
-                }
+                });
                 let port = value.get_u16();
-                Ok(
-                    Self {
-                        host,
-                        port,
-                        address_type,
-                    })
+                Ok(Self {
+                    host,
+                    port,
+                    address_type,
+                })
             }
             IpV6 => {
                 let mut host = Vec::<u8>::new();
-                for i in 0..16 {
+                (0..16).for_each(|_| {
                     host.push(value.get_u8());
-                }
+                });
                 let port = value.get_u16();
-                Ok(
-                    Self {
-                        host,
-                        port,
-                        address_type,
-                    })
+                Ok(Self {
+                    host,
+                    port,
+                    address_type,
+                })
             }
             Domain => {
                 let domain_name_length = value.get_u64();
                 let mut host = Vec::<u8>::new();
-                for i in 0..domain_name_length {
+                (0..domain_name_length).for_each(|_| {
                     host.push(value.get_u8());
-                }
+                });
                 let port = value.get_u16();
-                Ok(
-                    Self {
-                        host,
-                        port,
-                        address_type,
-                    })
+                Ok(Self {
+                    host,
+                    port,
+                    address_type,
+                })
             }
         }
     }
@@ -288,7 +289,7 @@ impl TryFrom<u8> for PpaassMessagePayloadEncryptionType {
             0 => Ok(PpaassMessagePayloadEncryptionType::Plain),
             1 => Ok(PpaassMessagePayloadEncryptionType::Blowfish),
             2 => Ok(PpaassMessagePayloadEncryptionType::Aes),
-            _ => Err(PpaassCommonError::FailToParsePpaassMessagePayloadEncryptionType(value))
+            _ => Err(PpaassCommonError::FailToParsePpaassMessagePayloadEncryptionType(value)),
         }
     }
 }
@@ -327,8 +328,12 @@ pub struct PpaassMessageSplitResult {
 }
 
 impl PpaassMessage {
-    pub fn new_with_random_encryption_type(ref_id: String, user_token: Vec<u8>, payload_encryption_token: Vec<u8>,
-        payload: Vec<u8>) -> Self {
+    pub fn new_with_random_encryption_type(
+        ref_id: String,
+        user_token: Vec<u8>,
+        payload_encryption_token: Vec<u8>,
+        payload: Vec<u8>,
+    ) -> Self {
         let id = generate_uuid();
         let payload_encryption_type = PpaassMessagePayloadEncryptionType::random();
         Self {
@@ -340,9 +345,13 @@ impl PpaassMessage {
             payload,
         }
     }
-    pub fn new(ref_id: String, user_token: Vec<u8>, payload_encryption_token: Vec<u8>,
+    pub fn new(
+        ref_id: String,
+        user_token: Vec<u8>,
+        payload_encryption_token: Vec<u8>,
         payload_encryption_type: PpaassMessagePayloadEncryptionType,
-        payload: Vec<u8>) -> Self {
+        payload: Vec<u8>,
+    ) -> Self {
         let id = generate_uuid();
         Self {
             id,
@@ -424,9 +433,11 @@ impl TryFrom<Vec<u8>> for PpaassMessage {
         let user_token_bytes = bytes.copy_to_bytes(user_token_length as usize);
         let user_token: Vec<u8> = user_token_bytes.to_vec();
         let payload_encryption_token_length = bytes.get_u64();
-        let payload_encryption_token_bytes = bytes.copy_to_bytes(payload_encryption_token_length as usize);
+        let payload_encryption_token_bytes =
+            bytes.copy_to_bytes(payload_encryption_token_length as usize);
         let payload_encryption_token = payload_encryption_token_bytes.to_vec();
-        let payload_encryption_type: PpaassMessagePayloadEncryptionType = bytes.get_u8().try_into()?;
+        let payload_encryption_type: PpaassMessagePayloadEncryptionType =
+            bytes.get_u8().try_into()?;
         let payload_length = bytes.get_u64() as usize;
         let payload = bytes.copy_to_bytes(payload_length).to_vec();
         Ok(Self {
@@ -439,4 +450,3 @@ impl TryFrom<Vec<u8>> for PpaassMessage {
         })
     }
 }
-
