@@ -478,7 +478,7 @@ impl HttpTransport {
         });
         let proxy_to_client_relay = tokio::spawn(async move {
             loop {
-                info!(
+                debug!(
                     "Begin the loop to read from proxy for http transport: [{}]",
                     transport_id_for_proxy_to_client_relay
                 );

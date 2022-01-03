@@ -849,7 +849,7 @@ impl Socks5Transport {
         });
         let proxy_to_client_relay = tokio::spawn(async move {
             loop {
-                info!(
+                debug!(
                     "Begin the loop to read from proxy for socks 5 transport: [{}]",
                     transport_id_for_proxy_to_client_relay
                 );
