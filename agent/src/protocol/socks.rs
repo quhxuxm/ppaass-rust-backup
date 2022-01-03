@@ -414,3 +414,42 @@ impl From<Socks5UdpDataResponse> for Vec<u8> {
         result.to_vec()
     }
 }
+
+#[derive(Debug)]
+pub(crate) struct UdpDiagram {
+    pub source_port: u16,
+    pub target_port: u16,
+    pub length: u16,
+    pub checksum: u16,
+    pub data: Vec<u8>,
+}
+
+impl From<Vec<u8>> for UdpDiagram {
+    fn from(bytes: Vec<u8>) -> Self {
+        let mut bytes = Bytes::from(bytes);
+        let source_port = bytes.get_u16();
+        let target_port = bytes.get_u16();
+        let length = bytes.get_u16();
+        let checksum = bytes.get_u16();
+        let data: Vec<u8> = bytes.copy_to_bytes(length as usize).to_vec();
+        Self {
+            source_port,
+            target_port,
+            length,
+            checksum,
+            data,
+        }
+    }
+}
+
+impl From<UdpDiagram> for Vec<u8> {
+    fn from(value: UdpDiagram) -> Self {
+        let mut result = BytesMut::new();
+        result.put_u16(value.source_port);
+        result.put_u16(value.target_port);
+        result.put_u16(value.length);
+        result.put_u16(value.checksum);
+        result.put_slice(value.data.as_slice());
+        result.to_vec()
+    }
+}

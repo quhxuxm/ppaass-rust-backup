@@ -8,8 +8,8 @@ use bytes::buf::BufMut;
 use futures::StreamExt;
 use futures_util::SinkExt;
 use log::{debug, error, info};
-use tokio::io::AsyncWriteExt;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
+use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpStream, UdpSocket};
 use tokio::sync::mpsc::Sender;
 use tokio_util::codec::{Decoder, Framed};
@@ -24,7 +24,7 @@ use ppaass_common::common::{
 };
 use ppaass_common::generate_uuid;
 
-use crate::config::{ProxyConfiguration, DEFAULT_TCP_BUFFER_SIZE, DEFAULT_UDP_BUFFER_SIZE};
+use crate::config::{DEFAULT_TCP_BUFFER_SIZE, DEFAULT_UDP_BUFFER_SIZE, ProxyConfiguration};
 use crate::error::PpaassProxyError;
 
 type AgentStreamFramed = Framed<TcpStream, PpaassMessageCodec>;
@@ -285,9 +285,10 @@ impl Transport {
             .into()),
         };
     }
+
     async fn udp_relay(
         &mut self,
-        mut agent_stream_framed: AgentStreamFramed,
+        agent_stream_framed: AgentStreamFramed,
         target_udp_socket: UdpSocket,
     ) -> Result<()> {
         if self.status != TransportStatus::Initialized {
@@ -348,11 +349,15 @@ impl Transport {
                     PpaassAgentMessagePayloadType::UdpData => {
                         let target_udp_socket_address: Result<SocketAddr, _> =
                             agent_message_target_address.try_into();
-                        if let Err(e) = target_udp_socket_address {
-                            error!("Fail to parse target udp socket address because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
-                            continue;
-                        }
-                        let target_udp_socket_address = target_udp_socket_address.unwrap();
+
+                        let target_udp_socket_address = match target_udp_socket_address {
+                            Err(e)=>{
+                                error!("Fail to parse target udp socket address because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
+                                continue;
+                            }
+                            Ok(r)=>r
+                        };
+
                         if let Err(e) = target_udp_socket_for_proxy_to_target_relay
                             .send_to(
                                 agent_message_payload_data.as_slice(),
@@ -420,6 +425,7 @@ impl Transport {
         target_to_proxy_relay.await?;
         Ok(())
     }
+
     async fn tcp_relay(
         &mut self,
         mut agent_stream_framed: AgentStreamFramed,

@@ -28,7 +28,7 @@ use crate::error::PpaassAgentError;
 use crate::protocol::socks::{
     Socks5AddrType, Socks5AuthMethod, Socks5AuthResponse, Socks5ConnectRequestType,
     Socks5ConnectResponse, Socks5ConnectResponseStatus, Socks5UdpDataRequest,
-    Socks5UdpDataResponse,
+    Socks5UdpDataResponse, UdpDiagram,
 };
 use crate::transport::common::{
     Transport, TransportSnapshot, TransportSnapshotType, TransportStatus,
@@ -694,9 +694,17 @@ impl Socks5Transport {
                     String::from_utf8(proxy_message_payload_data.clone())
                         .unwrap_or_else(|e| format!("{:#?}", e))
                 );
-
-
-
+//                let udp_diagram = UdpDiagram {
+//                    source_port: proxy_message_payload_source_address.port(),
+//                    target_port: proxy_message_payload_source_address.port(),
+//                    checksum: 0,
+//                    length: proxy_message_payload_data.len() as u16,
+//                    data: proxy_message_payload_data,
+//                };
+//                info!(
+//                    "Convert udp data, socks5 transport: [{}], udp data: \n{:?}\n",
+//                    transport_id_for_proxy_to_client_relay, udp_diagram
+//                );
                 match proxy_message_payload_type {
                     PpaassProxyMessagePayloadType::UdpData => {
                         let socks5_udp_data_response =
@@ -706,21 +714,21 @@ impl Socks5Transport {
                                     Socks5AddrType::IpV4,
                                     proxy_message_payload_source_address.host().to_vec(),
                                     proxy_message_payload_source_address.port(),
-                                    proxy_message_payload_data,
+                                    proxy_message_payload_data
                                 ),
                                 PpaassAddressType::IpV6 => Socks5UdpDataResponse::new(
                                     0,
                                     Socks5AddrType::IpV6,
                                     proxy_message_payload_source_address.host().to_vec(),
                                     proxy_message_payload_source_address.port(),
-                                    proxy_message_payload_data,
+                                    proxy_message_payload_data
                                 ),
                                 PpaassAddressType::Domain => Socks5UdpDataResponse::new(
                                     0,
                                     Socks5AddrType::Domain,
                                     proxy_message_payload_source_address.host().to_vec(),
                                     proxy_message_payload_source_address.port(),
-                                    proxy_message_payload_data,
+                                    proxy_message_payload_data
                                 ),
                             };
                         let socks5_udp_data_response_bytes: Vec<u8> =
