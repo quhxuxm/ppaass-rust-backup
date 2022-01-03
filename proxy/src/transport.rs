@@ -8,8 +8,8 @@ use bytes::buf::BufMut;
 use futures::StreamExt;
 use futures_util::SinkExt;
 use log::{debug, error, info};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tokio::net::{TcpStream, UdpSocket};
 use tokio::sync::mpsc::Sender;
 use tokio_util::codec::{Decoder, Framed};
@@ -24,7 +24,7 @@ use ppaass_common::common::{
 };
 use ppaass_common::generate_uuid;
 
-use crate::config::{DEFAULT_BUFFER_SIZE, ProxyConfiguration};
+use crate::config::{ProxyConfiguration, DEFAULT_BUFFER_SIZE};
 use crate::error::PpaassProxyError;
 
 type AgentStreamFramed = Framed<TcpStream, PpaassMessageCodec>;
@@ -80,7 +80,9 @@ impl Transport {
             id: generate_uuid(),
             status: TransportStatus::New,
             start_time: {
-                SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?.as_millis()
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)?
+                    .as_millis()
             },
             end_time: None,
             user_token: None,
@@ -115,12 +117,16 @@ impl Transport {
         let ppaass_message_codec = PpaassMessageCodec::new(
             rsa_public_key.into(),
             rsa_private_key.into(),
-            self.configuration.buffer_size().unwrap_or(DEFAULT_BUFFER_SIZE),
+            self.configuration
+                .buffer_size()
+                .unwrap_or(DEFAULT_BUFFER_SIZE),
         );
         let agent_stream_framed = Framed::with_capacity(
             agent_stream,
             ppaass_message_codec,
-            self.configuration.buffer_size().unwrap_or(DEFAULT_BUFFER_SIZE),
+            self.configuration
+                .buffer_size()
+                .unwrap_or(DEFAULT_BUFFER_SIZE),
         );
         // Initialize the target edge stream
         let init_result = self.init(agent_stream_framed).await?;
@@ -139,11 +145,13 @@ impl Transport {
                     return Err(PpaassProxyError::UnknownError.into());
                 }
                 Some(target_tcp_stream) => {
-                    self.tcp_relay(agent_stream_framed, target_tcp_stream).await?;
+                    self.tcp_relay(agent_stream_framed, target_tcp_stream)
+                        .await?;
                 }
             },
             Some(target_udp_socket) => {
-                self.udp_relay(agent_stream_framed, target_udp_socket).await?;
+                self.udp_relay(agent_stream_framed, target_udp_socket)
+                    .await?;
             }
         }
         Ok(())
@@ -158,13 +166,15 @@ impl Transport {
                 self.id.clone(),
                 TransportStatus::New,
                 self.status,
-            ).into());
+            )
+            .into());
         }
         let init_message = agent_stream_framed.next().await;
         if init_message.is_none() {
             return Ok(None);
         }
-        let init_message = init_message.context("Fail to unwrap ppaass message from source edge.")??;
+        let init_message =
+            init_message.context("Fail to unwrap ppaass message from source edge.")??;
         debug!("Receive agent message: {:#?}", init_message);
         let PpaassMessageSplitResult {
             id: agent_message_id,
@@ -176,16 +186,17 @@ impl Transport {
         let PpaassAgentMessagePayloadSplitResult {
             source_address: agent_message_source_address,
             /// The target address
-            target_address: agent_message_target_address,
+                target_address: agent_message_target_address,
             /// The payload type
-            payload_type: agent_message_payload_type,
+                payload_type: agent_message_payload_type,
             /// The data
-            data: agent_message_data,
+                data: agent_message_data,
         } = agent_message_body.split();
         let target_tcp_stream: TcpStream;
         return match agent_message_payload_type {
             PpaassAgentMessagePayloadType::TcpConnect => {
-                let target_socket_address: SocketAddr = agent_message_target_address.clone().try_into()?;
+                let target_socket_address: SocketAddr =
+                    agent_message_target_address.clone().try_into()?;
                 let target_stream_connect_result = TcpStream::connect(target_socket_address).await;
                 if let Err(e) = target_stream_connect_result {
                     error!("Fail connect to target, transport: [{}], agent message id: [{}], target address: [{}], because of error: {:#?}", agent_message_id, self.id, target_socket_address, e);
@@ -218,7 +229,9 @@ impl Transport {
                     generate_uuid().as_bytes().to_vec(),
                     tcp_connect_success_message_payload.into(),
                 );
-                agent_stream_framed.send(tcp_connect_success_message).await?;
+                agent_stream_framed
+                    .send(tcp_connect_success_message)
+                    .await?;
                 agent_stream_framed.flush().await?;
                 self.user_token = Some(user_token.clone());
                 self.source_address = Some(agent_message_source_address.clone());
@@ -250,7 +263,9 @@ impl Transport {
                     generate_uuid().as_bytes().to_vec(),
                     udp_associate_success_message_payload.into(),
                 );
-                agent_stream_framed.send(udp_associate_success_message).await?;
+                agent_stream_framed
+                    .send(udp_associate_success_message)
+                    .await?;
                 agent_stream_framed.flush().await?;
                 self.user_token = Some(user_token.clone());
                 self.source_address = Some(agent_message_source_address.clone());
@@ -266,7 +281,8 @@ impl Transport {
                 agent_message_id,
                 PpaassAgentMessagePayloadType::TcpConnect,
                 status,
-            ).into()),
+            )
+            .into()),
         };
     }
     async fn udp_relay(
@@ -279,11 +295,16 @@ impl Transport {
                 self.id.clone(),
                 TransportStatus::Initialized,
                 self.status,
-            ).into());
+            )
+            .into());
         }
         let transport_id_for_target_to_proxy_relay = self.id.clone();
         let transport_id_for_proxy_to_target_relay = self.id.clone();
-        let user_token = self.user_token.as_ref().context("Fail to unwrap user token")?.clone();
+        let user_token = self
+            .user_token
+            .as_ref()
+            .context("Fail to unwrap user token")?
+            .clone();
         let user_token_for_target_to_proxy_relay = user_token.clone();
         let (mut agent_write_part, mut agent_read_part) = agent_stream_framed.split();
         let target_udp_socket = Arc::new(target_udp_socket);
@@ -310,7 +331,8 @@ impl Transport {
                     payload: agent_message_payload_bytes,
                     ..
                 } = agent_udp_data_message.split();
-                let agent_message_payload: Result<PpaassAgentMessagePayload, _> = agent_message_payload_bytes.try_into();
+                let agent_message_payload: Result<PpaassAgentMessagePayload, _> =
+                    agent_message_payload_bytes.try_into();
                 if let Err(e) = agent_message_payload {
                     error!("Fail to decode agent message payload because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
                     continue;
@@ -324,16 +346,20 @@ impl Transport {
                 } = agent_message_payload.split();
                 match agent_message_payload_type {
                     PpaassAgentMessagePayloadType::UdpData => {
-                        let target_udp_socket_address: Result<SocketAddr, _> = agent_message_target_address.try_into();
+                        let target_udp_socket_address: Result<SocketAddr, _> =
+                            agent_message_target_address.try_into();
                         if let Err(e) = target_udp_socket_address {
                             error!("Fail to parse target udp socket address because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
                             continue;
                         }
                         let target_udp_socket_address = target_udp_socket_address.unwrap();
-                        if let Err(e) = target_udp_socket_for_proxy_to_target_relay.send_to(
-                            agent_message_payload_data.as_slice(),
-                            target_udp_socket_address,
-                        ).await {
+                        if let Err(e) = target_udp_socket_for_proxy_to_target_relay
+                            .send_to(
+                                agent_message_payload_data.as_slice(),
+                                target_udp_socket_address,
+                            )
+                            .await
+                        {
                             error!("Fail to send udp data to target because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
                             continue;
                         }
@@ -345,11 +371,22 @@ impl Transport {
                 }
             }
         });
-        let target_to_proxy_buffer_size = self.configuration.buffer_size().unwrap_or(DEFAULT_BUFFER_SIZE);
+        let target_to_proxy_buffer_size = self
+            .configuration
+            .buffer_size()
+            .unwrap_or(DEFAULT_BUFFER_SIZE);
+        let source_address_for_target_to_proxy_relay = match self.source_address.clone().take() {
+            None => return Ok(()),
+            Some(r) => r,
+        };
         let target_to_proxy_relay = tokio::spawn(async move {
             loop {
+                let source_address_for_target_to_proxy_relay =
+                    source_address_for_target_to_proxy_relay.clone();
                 let mut buf = Vec::<u8>::with_capacity(target_to_proxy_buffer_size);
-                let udp_relay_recv_result = target_udp_socket_for_target_to_proxy_relay.recv_from(&mut buf).await;
+                let udp_relay_recv_result = target_udp_socket_for_target_to_proxy_relay
+                    .recv_from(&mut buf)
+                    .await;
                 if let Err(e) = udp_relay_recv_result {
                     error!("Fail to receive udp message from target because of error, transport: [{}], error: {:#?}", transport_id_for_target_to_proxy_relay, e);
                     continue;
@@ -359,8 +396,8 @@ impl Transport {
                 let udp_data_diagram = buf[..data_size].to_vec();
                 let target_address: PpaassAddress = target_origin_address.into();
                 let udp_data_message_payload = PpaassProxyMessagePayload::new(
-                    //For udp data the source address is useless, just return a fake one
-                    PpaassAddress::new(vec![0, 0, 0, 0], 0, PpaassAddressType::IpV4),
+                    //For udp data the source address is the client address to accept the udp package
+                    source_address_for_target_to_proxy_relay,
                     target_address,
                     PpaassProxyMessagePayloadType::UdpData,
                     udp_data_diagram,
@@ -395,15 +432,28 @@ impl Transport {
                 self.id.clone(),
                 TransportStatus::Initialized,
                 self.status,
-            ).into());
+            )
+            .into());
         }
         self.status = TransportStatus::Relaying;
         self.publish_transport_snapshot().await?;
-        let user_token = self.user_token.as_ref().context("Fail to unwrap user token")?.clone();
+        let user_token = self
+            .user_token
+            .as_ref()
+            .context("Fail to unwrap user token")?
+            .clone();
         let user_token_for_target_to_proxy_relay = user_token.clone();
-        let source_address = self.source_address.clone().take().context("Can not unwrap source edge address")?;
+        let source_address = self
+            .source_address
+            .clone()
+            .take()
+            .context("Can not unwrap source edge address")?;
         let source_address_for_target_to_proxy_relay = source_address.clone();
-        let target_address = self.target_address.clone().take().context("Can not unwrap target edge address")?;
+        let target_address = self
+            .target_address
+            .clone()
+            .take()
+            .context("Can not unwrap target edge address")?;
         let target_address_for_target_to_proxy_relay = target_address.clone();
         let (mut target_read, mut target_write) = target_tcp_stream.into_split();
         let (mut agent_write_part, mut agent_read_part) = agent_stream_framed.split();
@@ -436,7 +486,8 @@ impl Transport {
                     payload: agent_message_payload,
                     ..
                 } = agent_tcp_data_message.split();
-                let agent_message_payload: Result<PpaassAgentMessagePayload, _> = agent_message_payload.try_into();
+                let agent_message_payload: Result<PpaassAgentMessagePayload, _> =
+                    agent_message_payload.try_into();
                 if let Err(e) = agent_message_payload {
                     error!("Fail to parse agent message payload because of error, transport:[{}], error: {:#?}", transport_id_for_proxy_to_target_relay,e);
                     return;
@@ -449,7 +500,10 @@ impl Transport {
                 } = agent_message_payload.split();
                 match agent_message_payload_type {
                     PpaassAgentMessagePayloadType::TcpData => {
-                        if let Err(e) = target_write.write(agent_message_payload_data.as_slice()).await {
+                        if let Err(e) = target_write
+                            .write(agent_message_payload_data.as_slice())
+                            .await
+                        {
                             error!("Fail to send agent data from proxy to target because of error, transport:[{}], error: {:#?}",
                                     transport_id_for_proxy_to_target_relay, e);
                             return;
@@ -477,7 +531,10 @@ impl Transport {
                 }
             }
         });
-        let target_to_proxy_buffer_size = self.configuration.buffer_size().unwrap_or(DEFAULT_BUFFER_SIZE);
+        let target_to_proxy_buffer_size = self
+            .configuration
+            .buffer_size()
+            .unwrap_or(DEFAULT_BUFFER_SIZE);
         let target_to_proxy_relay = tokio::spawn(async move {
             loop {
                 info!(
@@ -503,12 +560,13 @@ impl Transport {
                         PpaassProxyMessagePayloadType::TcpConnectionClose,
                         target_read_buf,
                     );
-                    let tcp_connection_close_message = PpaassMessage::new_with_random_encryption_type(
-                        "".to_string(),
-                        user_token_for_target_to_proxy_relay.clone(),
-                        generate_uuid().as_bytes().to_vec(),
-                        tcp_connection_close_message_payload.into(),
-                    );
+                    let tcp_connection_close_message =
+                        PpaassMessage::new_with_random_encryption_type(
+                            "".to_string(),
+                            user_token_for_target_to_proxy_relay.clone(),
+                            generate_uuid().as_bytes().to_vec(),
+                            tcp_connection_close_message_payload.into(),
+                        );
                     if let Err(e) = agent_write_part.send(tcp_connection_close_message).await {
                         error!("Fail to send connection close from proxy to client because of error: {:#?}", e);
                         return;
@@ -561,7 +619,9 @@ impl Transport {
     pub async fn close(mut self) -> Result<()> {
         self.end_time = {
             Some(
-                SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?.as_millis(),
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)?
+                    .as_millis(),
             )
         };
         self.status = TransportStatus::Closed;

@@ -146,7 +146,7 @@ impl Socks5Transport {
             )
             .into());
         }
-        let socks5_auth_codec = Socks5AuthCodec::default();
+        let socks5_auth_codec = Socks5AuthCodec::new(self.id.clone());
         let mut client_tcp_framed = socks5_auth_codec.framed(&mut client_tcp_stream);
         let socks5_auth_command = client_tcp_framed.next().await;
         match socks5_auth_command {
@@ -197,7 +197,7 @@ impl Socks5Transport {
             .into());
         }
         let client_socket_address = client_tcp_stream.peer_addr()?;
-        let socks5_connect_codec = Socks5ConnectCodec::default();
+        let socks5_connect_codec = Socks5ConnectCodec::new(self.id.clone());
         let mut client_tcp_framed = socks5_connect_codec.framed(&mut client_tcp_stream);
         let socks5_connect_cmd = client_tcp_framed.next().await;
         let socks5_connect_cmd = match socks5_connect_cmd {
@@ -369,7 +369,7 @@ impl Socks5Transport {
                     self.configuration.buffer_size().unwrap_or(64 * 1024),
                 );
                 let udp_source_address = PpaassAddress::new(
-                    source_address.host().to_vec(),
+                    socks5_connect_cmd.dst_host().to_vec(),
                     socks5_connect_cmd.dst_port(),
                     *source_address.address_type(),
                 );

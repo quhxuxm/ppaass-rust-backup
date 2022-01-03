@@ -1,6 +1,7 @@
 use std::io::{Error, ErrorKind};
 
 use bytes::{Buf, BufMut, BytesMut};
+use log::info;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::error::PpaassAgentError;
@@ -9,19 +10,24 @@ use crate::protocol::socks::{
     Socks5ConnectRequestType, Socks5ConnectResponse,
 };
 
-pub(crate) struct Socks5AuthCodec {}
-
-impl Default for Socks5AuthCodec {
-    fn default() -> Self {
-        Socks5AuthCodec {}
-    }
+pub(crate) struct Socks5AuthCodec {
+    transport_id: String,
 }
 
+impl Socks5AuthCodec {
+    pub(crate) fn new(transport_id: String) -> Self {
+        Self { transport_id }
+    }
+}
 impl Decoder for Socks5AuthCodec {
     type Item = Socks5AuthRequest;
     type Error = PpaassAgentError;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        info!(
+            "Socks5 authenticate command, transport: [{}], command: {:?}",
+            self.transport_id, src
+        );
         if src.len() < 2 {
             return Ok(None);
         }
@@ -44,15 +50,17 @@ impl Encoder<Socks5AuthResponse> for Socks5AuthCodec {
     fn encode(&mut self, item: Socks5AuthResponse, dst: &mut BytesMut) -> Result<(), Self::Error> {
         dst.put_u8(item.get_version());
         dst.put_u8(item.get_method().into());
-        return Ok(());
+        Ok(())
     }
 }
 
-pub(crate) struct Socks5ConnectCodec {}
+pub(crate) struct Socks5ConnectCodec {
+    transport_id: String,
+}
 
-impl Default for Socks5ConnectCodec {
-    fn default() -> Self {
-        Socks5ConnectCodec {}
+impl Socks5ConnectCodec {
+    pub(crate) fn new(transport_id: String) -> Self {
+        Self { transport_id }
     }
 }
 
@@ -61,6 +69,10 @@ impl Decoder for Socks5ConnectCodec {
     type Error = PpaassAgentError;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        info!(
+            "Socks5 connect command, transport: [{}], command: {:?}",
+            self.transport_id, src
+        );
         if src.len() < 4 {
             return Ok(None);
         }
