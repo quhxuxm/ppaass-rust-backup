@@ -443,7 +443,8 @@ impl Socks5Transport {
                 } = proxy_message_payload.split();
                 match proxy_message_payload_type {
                     PpaassProxyMessagePayloadType::UdpAssociateFail => {
-                        Self::send_socks5_failure_response(&mut client_tcp_framed).await;
+                        error!("Fail to associate udp socket because of proxy associate udp fail, socks5 transport: [{}]", self.id);
+                        Self::send_socks5_failure_response(&mut client_tcp_framed).await?;
                         Err(PpaassAgentError::FailToAssociateUdpOnProxy.into())
                     }
                     PpaassProxyMessagePayloadType::UdpAssociateSuccess => {
