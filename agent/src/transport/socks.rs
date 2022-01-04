@@ -451,7 +451,8 @@ impl Socks5Transport {
                             UdpSocket::bind(SocketAddr::new(IpAddr::from(LOCAL_ADDRESS), 0)).await;
                         let agent_bind_udp_socket = match agent_bind_udp_socket {
                             Err(e) => {
-                                Self::send_socks5_failure_response(&mut client_tcp_framed).await;
+                                error!("Fail to bind agent udp socket because of error, socks5 transport: [{}], error: {:#?}", self.id, e);
+                                Self::send_socks5_failure_response(&mut client_tcp_framed).await?;
                                 return Err(PpaassAgentError::FailToAssociateUdpOnAgent.into());
                             }
                             Ok(result) => result,
@@ -460,8 +461,8 @@ impl Socks5Transport {
                         let agent_bind_udp_socket_address: PpaassAddress =
                             agent_bind_udp_socket_address.into();
                         info!(
-                            "Udp associate, agent use this address to receive udp message : {:?}",
-                            agent_bind_udp_socket_address
+                            "Udp associate, agent use this address to receive udp message, socks5 transport: [{}], message : {:?}",
+                            self.id, agent_bind_udp_socket_address
                         );
                         let socks5_udp_associate_success_response = Socks5ConnectResponse::new(
                             Socks5ConnectResponseStatus::Succeeded,
@@ -483,8 +484,9 @@ impl Socks5Transport {
                             target_address: udp_target_address,
                         }))
                     }
-                    _ => {
-                        Self::send_socks5_failure_response(&mut client_tcp_framed).await;
+                    payload_type => {
+                        error!("Fail to associate udp socket because of wrong proxy message payload type, socks5 transport: [{}], payload type: {:#?}", self.id, payload_type);
+                        Self::send_socks5_failure_response(&mut client_tcp_framed).await?;
                         Err(PpaassAgentError::FailToAssociateUdpOnProxy.into())
                     }
                 }
@@ -566,7 +568,7 @@ impl Socks5Transport {
             source_address: udp_client_source_address,
             target_address,
             client_tcp_stream,
-            mut agent_bind_udp_socket,
+            agent_bind_udp_socket,
         } = init_result;
         let transport_id_for_client_to_proxy_relay = self.id.clone();
         let transport_id_for_proxy_to_client_relay = self.id.clone();
@@ -694,17 +696,17 @@ impl Socks5Transport {
                     String::from_utf8(proxy_message_payload_data.clone())
                         .unwrap_or_else(|e| format!("{:#?}", e))
                 );
-//                let udp_diagram = UdpDiagram {
-//                    source_port: proxy_message_payload_source_address.port(),
-//                    target_port: proxy_message_payload_source_address.port(),
-//                    checksum: 0,
-//                    length: proxy_message_payload_data.len() as u16,
-//                    data: proxy_message_payload_data,
-//                };
-//                info!(
-//                    "Convert udp data, socks5 transport: [{}], udp data: \n{:?}\n",
-//                    transport_id_for_proxy_to_client_relay, udp_diagram
-//                );
+                //                let udp_diagram = UdpDiagram {
+                //                    source_port: proxy_message_payload_source_address.port(),
+                //                    target_port: proxy_message_payload_source_address.port(),
+                //                    checksum: 0,
+                //                    length: proxy_message_payload_data.len() as u16,
+                //                    data: proxy_message_payload_data,
+                //                };
+                //                info!(
+                //                    "Convert udp data, socks5 transport: [{}], udp data: \n{:?}\n",
+                //                    transport_id_for_proxy_to_client_relay, udp_diagram
+                //                );
                 match proxy_message_payload_type {
                     PpaassProxyMessagePayloadType::UdpData => {
                         let socks5_udp_data_response =
@@ -714,21 +716,21 @@ impl Socks5Transport {
                                     Socks5AddrType::IpV4,
                                     proxy_message_payload_source_address.host().to_vec(),
                                     proxy_message_payload_source_address.port(),
-                                    proxy_message_payload_data
+                                    proxy_message_payload_data,
                                 ),
                                 PpaassAddressType::IpV6 => Socks5UdpDataResponse::new(
                                     0,
                                     Socks5AddrType::IpV6,
                                     proxy_message_payload_source_address.host().to_vec(),
                                     proxy_message_payload_source_address.port(),
-                                    proxy_message_payload_data
+                                    proxy_message_payload_data,
                                 ),
                                 PpaassAddressType::Domain => Socks5UdpDataResponse::new(
                                     0,
                                     Socks5AddrType::Domain,
                                     proxy_message_payload_source_address.host().to_vec(),
                                     proxy_message_payload_source_address.port(),
-                                    proxy_message_payload_data
+                                    proxy_message_payload_data,
                                 ),
                             };
                         let socks5_udp_data_response_bytes: Vec<u8> =
@@ -743,8 +745,8 @@ impl Socks5Transport {
                                 Ok(result) => result,
                             };
                         info!(
-                            "Send target message to client, socks 5 transport: [{}], client udp socket: {:?}",
-                            transport_id_for_proxy_to_client_relay, agent_bind_udp_socket_p2c
+                            "Send target message to client, socks 5 transport: [{}], client udp socket: {:?}, send to client address: {:?}",
+                            transport_id_for_proxy_to_client_relay, agent_bind_udp_socket_p2c, udp_client_source_socket_address
                         );
                         if let Err(e) = agent_bind_udp_socket_p2c
                             .send_to(
