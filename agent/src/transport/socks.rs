@@ -733,7 +733,7 @@ impl Socks5Transport {
                             };
                         let socks5_udp_data_response_bytes: Vec<u8> =
                             socks5_udp_data_response.into();
-                        let udp_client_source_sockst_address: SocketAddr =
+                        let udp_client_source_socket_address: SocketAddr =
                             match proxy_message_payload_source_address.try_into() {
                                 Err(e) => {
                                     error!("Fail to convert the source address in proxy message because of error, socks5 transport: [{}], error: {:#?}",
@@ -749,7 +749,7 @@ impl Socks5Transport {
                         if let Err(e) = agent_bind_udp_socket_p2c
                             .send_to(
                                 socks5_udp_data_response_bytes.as_slice(),
-                                udp_client_source_sockst_address,
+                                udp_client_source_socket_address,
                             )
                             .await
                         {
