@@ -700,48 +700,55 @@ impl Socks5Transport {
                 match proxy_message_payload_type {
                     PpaassProxyMessagePayloadType::UdpData => {
                         let socks5_udp_data_response =
-                            match proxy_message_payload_source_address.address_type() {
+                            match proxy_message_payload_target_address.address_type() {
                                 PpaassAddressType::IpV4 => Socks5UdpDataResponse::new(
                                     0,
                                     Socks5AddrType::IpV4,
-                                    proxy_message_payload_source_address.host().to_vec(),
+                                    proxy_message_payload_target_address.host().to_vec(),
                                     proxy_message_payload_target_address.port(),
                                     proxy_message_payload_data,
                                 ),
                                 PpaassAddressType::IpV6 => Socks5UdpDataResponse::new(
                                     0,
                                     Socks5AddrType::IpV6,
-                                    proxy_message_payload_source_address.host().to_vec(),
+                                    proxy_message_payload_target_address.host().to_vec(),
                                     proxy_message_payload_target_address.port(),
                                     proxy_message_payload_data,
                                 ),
                                 PpaassAddressType::Domain => Socks5UdpDataResponse::new(
                                     0,
                                     Socks5AddrType::Domain,
-                                    proxy_message_payload_source_address.host().to_vec(),
+                                    proxy_message_payload_target_address.host().to_vec(),
                                     proxy_message_payload_target_address.port(),
                                     proxy_message_payload_data,
                                 ),
                             };
                         let socks5_udp_data_response_bytes: Vec<u8> =
                             socks5_udp_data_response.into();
-                        let udp_client_source_socket_address: SocketAddr =
-                            match proxy_message_payload_source_address.try_into() {
-                                Err(e) => {
-                                    error!("Fail to convert the source address in proxy message because of error, socks5 transport: [{}], error: {:#?}",
+
+                        let udp_client_socket_address = PpaassAddress::new(
+                            proxy_message_payload_target_address.host().to_vec(),
+                            proxy_message_payload_source_address.port(),
+                            *proxy_message_payload_target_address.address_type(),
+                        );
+                        let udp_client_socket_address: SocketAddr = match udp_client_socket_address
+                            .try_into()
+                        {
+                            Err(e) => {
+                                error!("Fail to convert the source address in proxy message because of error, socks5 transport: [{}], error: {:#?}",
                                     transport_id_for_proxy_to_client_relay, e);
-                                    continue;
-                                }
-                                Ok(result) => result,
-                            };
+                                continue;
+                            }
+                            Ok(result) => result,
+                        };
                         info!(
                             "Send target message to client, socks 5 transport: [{}], client udp socket: {:?}, send to client address: {:?}",
-                            transport_id_for_proxy_to_client_relay, agent_bind_udp_socket_p2c, udp_client_source_socket_address
+                            transport_id_for_proxy_to_client_relay, agent_bind_udp_socket_p2c, udp_client_socket_address
                         );
                         if let Err(e) = agent_bind_udp_socket_p2c
                             .send_to(
                                 socks5_udp_data_response_bytes.as_slice(),
-                                udp_client_source_socket_address,
+                                udp_client_socket_address,
                             )
                             .await
                         {

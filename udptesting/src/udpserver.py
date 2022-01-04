@@ -2,8 +2,8 @@ import socket
 
 if __name__ == "__main__":
     server_udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    server_udp_socket.bind(("0.0.0.0", 80))
-    print('Start listening udp: [%s]', server_udp_socket)
+    server_udp_socket.bind(("0.0.0.0", 8888))
+    print('Start listening udp:', server_udp_socket)
     i = 0
     while True:
         message, client_address = server_udp_socket.recvfrom(65535)
