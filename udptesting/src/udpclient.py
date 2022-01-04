@@ -6,7 +6,7 @@ if __name__ == "__main__":
     client_udp_socket = socks.socksocket(socket.AF_INET, socket.SOCK_DGRAM)
     client_udp_socket.set_proxy(socks.SOCKS5, "192.168.31.200", 10081)
     # client_udp_socket.set_proxy(socks.SOCKS5, "10.175.4.220", 10081)
-    client_udp_socket.bind(("0.0.0.0", 81))
+    # client_udp_socket.bind(("0.0.0.0", 81))
     client_udp_socket.connect(("192.168.31.200", 80))
     print('Start udp client: [%s]', client_udp_socket)
     i = 0
