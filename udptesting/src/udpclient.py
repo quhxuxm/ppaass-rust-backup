@@ -4,9 +4,9 @@ import socks
 
 if __name__ == "__main__":
     sock = socks.socksocket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.set_proxy(socks.SOCKS5, "10.175.4.220", 10081)
+    sock.set_proxy(socks.SOCKS5, "192.168.31.200", 10081)
     # sock.bind(("0.0.0.0", 8701))
-    sock.connect(("10.175.4.220", 8700))
+    sock.connect(("192.168.31.200", 8700))
     print('Start client: [%s]', sock)
     i = 0
     while True:
