@@ -14,6 +14,7 @@ if __name__ == "__main__":
         print('connection from', client_address)
         print('received "%s"' % message)
         print('sending data back to the client [%s]' % i)
+        # sock.send(bytes("server echo: [%s]" % i, "utf-8"))
         sock.sendto(bytes("server echo: [%s]" % i, "utf-8"), client_address)
         print('finish', client_address)
         i = i + 1
