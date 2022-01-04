@@ -4,7 +4,7 @@ use anyhow::Result;
 
 fn main() -> Result<()> {
     println!("Begin udp server testing");
-    let udp_server = UdpSocket::bind("10.175.4.220:8801")?;
+    let udp_server = UdpSocket::bind("0.0.0.0:8801")?;
     let mut index = 0;
     loop {
         println!("Begin a server loop: {}", index);
