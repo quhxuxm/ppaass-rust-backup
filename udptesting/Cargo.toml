@@ -1,0 +1,14 @@
+[package]
+name = "ppaass"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name = "udp-client"
+path = "src/main_client.rs"
+[[bin]]
+name = "udp-server"
+path = "src/main_server.rs"
+[dependencies]
+anyhow = "1.0.51"
