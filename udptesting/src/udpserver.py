@@ -7,7 +7,7 @@ if __name__ == "__main__":
     i = 0
     while True:
         message, client_address = sock.recvfrom(65535)
-        print('connection from', client_address)
+        print('connection from: ', client_address)
         print('received "%s"' % message)
         print('sending data back to the client [%s]' % i)
         # sock.send(bytes("server echo: [%s]" % i, "utf-8"))
