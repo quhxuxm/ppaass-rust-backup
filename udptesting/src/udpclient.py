@@ -3,18 +3,17 @@ import socket
 import socks
 
 if __name__ == "__main__":
-    sock = socks.socksocket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.set_proxy(socks.SOCKS5, "192.168.31.200", 10081)
-    # sock.bind(("0.0.0.0", 8701))
-    sock.connect(("192.168.31.200", 8700))
-    print('Start client: [%s]', sock)
+    client_udp_socket = socks.socksocket(socket.AF_INET, socket.SOCK_DGRAM)
+    client_udp_socket.set_proxy(socks.SOCKS5, "192.168.31.200", 10081)
+    # client_udp_socket.set_proxy(socks.SOCKS5, "10.175.4.220", 10081)
+    client_udp_socket.bind(("0.0.0.0", 81))
+    client_udp_socket.connect(("192.168.31.200", 80))
+    print('Start udp client: [%s]', client_udp_socket)
     i = 0
     while True:
         message = bytes('This is client message.  It will be repeated: %s' % i, 'utf-8')
         i = i + 1
-        print('sending [%s]' % message)
-        sock.send(message)
-        data = sock.recv(65535)
-        print('received [%s]' % data)
-
-    sock.close()
+        print('client sending udp message: [%s]' % message)
+        client_udp_socket.send(message)
+        data = client_udp_socket.recv(65535)
+        print('client receive udp message: [%s]' % data)
