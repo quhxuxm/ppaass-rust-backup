@@ -627,6 +627,12 @@ impl Transport {
                     };
                     return;
                 }
+                info!(
+                    "Receive target data for tcp transport: [{}], target address: [{}], data size: [{}]",
+                    transport_id_for_target_to_proxy_relay,
+                    target_address_for_target_to_proxy_relay,
+                    read_size
+                );
                 debug!(
                     "Receive target data for tcp transport: [{}], target address: [{}], data:\n{}\n",
                     transport_id_for_target_to_proxy_relay,
