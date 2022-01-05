@@ -4,7 +4,6 @@ use std::time::SystemTime;
 
 use anyhow::Context;
 use anyhow::Result;
-use bytes::buf::BufMut;
 use futures::StreamExt;
 use futures_util::SinkExt;
 use log::{debug, error, info};
@@ -12,7 +11,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tokio::net::{TcpStream, UdpSocket};
 use tokio::sync::mpsc::Sender;
-use tokio_util::codec::{Decoder, Framed};
+use tokio_util::codec::Framed;
 
 use ppaass_common::agent::{
     PpaassAgentMessagePayload, PpaassAgentMessagePayloadSplitResult, PpaassAgentMessagePayloadType,
@@ -96,7 +95,7 @@ impl Transport {
 
     async fn publish_transport_snapshot(&self) -> Result<()> {
         let transport_snapshot = self.take_snapshot();
-//        self.snapshot_sender.send(transport_snapshot).await?;
+        //        self.snapshot_sender.send(transport_snapshot).await?;
         Ok(())
     }
 
@@ -212,8 +211,16 @@ impl Transport {
                         generate_uuid().as_bytes().to_vec(),
                         tcp_connect_fail_message_payload.into(),
                     );
-                    agent_stream_framed.send(tcp_connect_fail_message).await?;
-                    agent_stream_framed.flush().await?;
+                    if let Err(ppaass_error) =
+                        agent_stream_framed.send(tcp_connect_fail_message).await
+                    {
+                        error!("Fail to send connect fail message to agent because of error, transport: [{}], error: {:#?}", self.id, ppaass_error);
+                        return Err(PpaassProxyError::ConnectToTargetFail(e).into());
+                    }
+                    if let Err(unknwon_error) = agent_stream_framed.flush().await {
+                        error!("Fail to send connect fail message to agent because of error, transport: [{}], error: {:#?}", self.id, unknwon_error);
+                        return Err(PpaassProxyError::ConnectToTargetFail(e).into());
+                    }
                     return Err(PpaassProxyError::ConnectToTargetFail(e).into());
                 }
                 target_tcp_stream = target_stream_connect_result.unwrap();
@@ -229,10 +236,16 @@ impl Transport {
                     generate_uuid().as_bytes().to_vec(),
                     tcp_connect_success_message_payload.into(),
                 );
-                agent_stream_framed
-                    .send(tcp_connect_success_message)
-                    .await?;
-                agent_stream_framed.flush().await?;
+                if let Err(ppaass_error) =
+                    agent_stream_framed.send(tcp_connect_success_message).await
+                {
+                    error!("Fail to send connect success message to agent because of error, transport: [{}], error: {:#?}", self.id, ppaass_error);
+                    return Err(PpaassProxyError::UnknownError.into());
+                }
+                if let Err(unknwon_error) = agent_stream_framed.flush().await {
+                    error!("Fail to send connect success message to agent because of error, transport: [{}], error: {:#?}", self.id, unknwon_error);
+                    return Err(PpaassProxyError::UnknownError.into());
+                }
                 self.user_token = Some(user_token.clone());
                 self.source_address = Some(agent_message_source_address.clone());
                 self.target_address = Some(agent_message_target_address.clone());
@@ -263,10 +276,17 @@ impl Transport {
                     generate_uuid().as_bytes().to_vec(),
                     udp_associate_success_message_payload.into(),
                 );
-                agent_stream_framed
+                if let Err(ppaass_error) = agent_stream_framed
                     .send(udp_associate_success_message)
-                    .await?;
-                agent_stream_framed.flush().await?;
+                    .await
+                {
+                    error!("Fail to send udp associate success message to agent because of error, transport: [{}], error: {:#?}", self.id, ppaass_error);
+                    return Err(PpaassProxyError::UnknownError.into());
+                }
+                if let Err(unknwon_error) = agent_stream_framed.flush().await {
+                    error!("Fail to send udp associate success message to agent because of error, transport: [{}], error: {:#?}", self.id, unknwon_error);
+                    return Err(PpaassProxyError::UnknownError.into());
+                }
                 self.user_token = Some(user_token.clone());
                 self.source_address = Some(agent_message_source_address.clone());
                 self.target_address = Some(agent_message_target_address.clone());
