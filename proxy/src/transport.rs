@@ -8,8 +8,8 @@ use bytes::buf::BufMut;
 use futures::StreamExt;
 use futures_util::SinkExt;
 use log::{debug, error, info};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tokio::net::{TcpStream, UdpSocket};
 use tokio::sync::mpsc::Sender;
 use tokio_util::codec::{Decoder, Framed};
@@ -24,7 +24,7 @@ use ppaass_common::common::{
 };
 use ppaass_common::generate_uuid;
 
-use crate::config::{DEFAULT_TCP_BUFFER_SIZE, DEFAULT_UDP_BUFFER_SIZE, ProxyConfiguration};
+use crate::config::{ProxyConfiguration, DEFAULT_TCP_BUFFER_SIZE, DEFAULT_UDP_BUFFER_SIZE};
 use crate::error::PpaassProxyError;
 
 type AgentStreamFramed = Framed<TcpStream, PpaassMessageCodec>;
@@ -96,7 +96,7 @@ impl Transport {
 
     async fn publish_transport_snapshot(&self) -> Result<()> {
         let transport_snapshot = self.take_snapshot();
-        self.snapshot_sender.send(transport_snapshot).await?;
+//        self.snapshot_sender.send(transport_snapshot).await?;
         Ok(())
     }
 
@@ -351,11 +351,11 @@ impl Transport {
                             agent_message_target_address.try_into();
 
                         let target_udp_socket_address = match target_udp_socket_address {
-                            Err(e)=>{
+                            Err(e) => {
                                 error!("Fail to parse target udp socket address because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
                                 continue;
                             }
-                            Ok(r)=>r
+                            Ok(r) => r,
                         };
 
                         if let Err(e) = target_udp_socket_for_proxy_to_target_relay
@@ -428,7 +428,7 @@ impl Transport {
 
     async fn tcp_relay(
         &mut self,
-        mut agent_stream_framed: AgentStreamFramed,
+        agent_stream_framed: AgentStreamFramed,
         target_tcp_stream: TcpStream,
     ) -> Result<()> {
         if self.status != TransportStatus::Initialized {
@@ -480,25 +480,28 @@ impl Transport {
                         );
                         return;
                     }
-                    Some(result) => result,
+                    Some(result) => match result {
+                        Err(e) => {
+                            error!("Fail to decode agent tcp message because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
+                            return;
+                        }
+                        Ok(r) => r,
+                    },
                 };
-                if let Err(e) = agent_tcp_data_message {
-                    error!("Fail to decode agent tcp message because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
-                    return;
-                }
-                let agent_tcp_data_message = agent_tcp_data_message.unwrap();
                 let PpaassMessageSplitResult {
                     id: agent_message_id,
                     payload: agent_message_payload,
                     ..
                 } = agent_tcp_data_message.split();
-                let agent_message_payload: Result<PpaassAgentMessagePayload, _> =
-                    agent_message_payload.try_into();
-                if let Err(e) = agent_message_payload {
-                    error!("Fail to parse agent message payload because of error, transport:[{}], error: {:#?}", transport_id_for_proxy_to_target_relay,e);
-                    return;
+                let agent_message_payload: PpaassAgentMessagePayload = match agent_message_payload
+                    .try_into()
+                {
+                    Err(e) => {
+                        error!("Fail to parse agent message payload because of error, transport:[{}], error: {:#?}", transport_id_for_proxy_to_target_relay,e);
+                        return;
+                    }
+                    Ok(r) => r,
                 };
-                let agent_message_payload = agent_message_payload.unwrap();
                 let PpaassAgentMessagePayloadSplitResult {
                     data: agent_message_payload_data,
                     payload_type: agent_message_payload_type,

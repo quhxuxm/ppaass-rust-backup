@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -31,38 +31,54 @@ impl Server {
         let mut config_file = File::open(CONFIG_FILE_PATH)?;
         let mut config_file_content = String::new();
         config_file.read_to_string(&mut config_file_content)?;
-        let proxy_server_config = toml::from_str::<ProxyConfiguration>(&config_file_content).with_context(|| "Fail to parse proxy configuration file.")?;
+        let proxy_server_config = toml::from_str::<ProxyConfiguration>(&config_file_content)
+            .with_context(|| "Fail to parse proxy configuration file.")?;
         log4rs::init_file(
             proxy_server_config.log_config().as_ref().unwrap(),
             Default::default(),
-        ).with_context(|| "Fail to initialize proxy configuration file.")?;
+        )
+        .with_context(|| "Fail to initialize proxy configuration file.")?;
         let mut master_runtime_builder = tokio::runtime::Builder::new_multi_thread();
         master_runtime_builder.worker_threads(
-            proxy_server_config.master_thread_number().with_context(|| "Can not get worker threads number from proxy configuration.")?,
+            proxy_server_config
+                .master_thread_number()
+                .with_context(|| "Can not get worker threads number from proxy configuration.")?,
         );
         master_runtime_builder.max_blocking_threads(
-            proxy_server_config.max_blocking_threads().with_context(|| {
-                "Can not get max blocking threads number from proxy configuration."
-            })?,
+            proxy_server_config
+                .max_blocking_threads()
+                .with_context(|| {
+                    "Can not get max blocking threads number from proxy configuration."
+                })?,
         );
         master_runtime_builder.thread_name("proxy-master");
         master_runtime_builder.thread_keep_alive(Duration::from_secs(
-            proxy_server_config.thread_timeout().with_context(|| "Can not get thread timeout from proxy configuration.")?,
+            proxy_server_config
+                .thread_timeout()
+                .with_context(|| "Can not get thread timeout from proxy configuration.")?,
         ));
         master_runtime_builder.enable_all();
-        let master_runtime = master_runtime_builder.build().with_context(|| "Fail to build init tokio runtime.")?;
+        let master_runtime = master_runtime_builder
+            .build()
+            .with_context(|| "Fail to build init tokio runtime.")?;
         let mut worker_runtime_builder = tokio::runtime::Builder::new_multi_thread();
         worker_runtime_builder.worker_threads(
-            proxy_server_config.worker_thread_number().with_context(|| "Can not get relay thread number from proxy configuration.")?,
+            proxy_server_config
+                .worker_thread_number()
+                .with_context(|| "Can not get relay thread number from proxy configuration.")?,
         );
         worker_runtime_builder.max_blocking_threads(
-            proxy_server_config.max_blocking_threads().with_context(|| {
-                "Can not get max blocking threads number from proxy configuration."
-            })?,
+            proxy_server_config
+                .max_blocking_threads()
+                .with_context(|| {
+                    "Can not get max blocking threads number from proxy configuration."
+                })?,
         );
         worker_runtime_builder.thread_name("proxy-worker");
         worker_runtime_builder.thread_keep_alive(Duration::from_secs(
-            proxy_server_config.thread_timeout().with_context(|| "Can not get thread time out from proxy configuration.")?,
+            proxy_server_config
+                .thread_timeout()
+                .with_context(|| "Can not get thread time out from proxy configuration.")?,
         ));
         worker_runtime_builder.enable_all();
         let worker_runtime = worker_runtime_builder.build()?;
@@ -74,16 +90,20 @@ impl Server {
     }
 
     pub fn run(&self) -> Result<()> {
-        let agent_public_key = std::fs::read_to_string(Path::new(AGENT_PUBLIC_KEY_PATH)).expect("Fail to read agent public key.");
-        let proxy_private_key = std::fs::read_to_string(Path::new(PROXY_PRIVATE_KEY_PATH)).expect("Fail to read proxy private key.");
+        let agent_public_key = std::fs::read_to_string(Path::new(AGENT_PUBLIC_KEY_PATH))
+            .expect("Fail to read agent public key.");
+        let proxy_private_key = std::fs::read_to_string(Path::new(PROXY_PRIVATE_KEY_PATH))
+            .expect("Fail to read proxy private key.");
         let proxy_server_config = self.configuration.clone();
         let worker_runtime = self.worker_runtime.clone();
-        let (transport_info_sender, mut transport_info_receiver) = tokio::sync::mpsc::channel::<TransportSnapshot>(32);
+        let (transport_info_sender, mut transport_info_receiver) =
+            tokio::sync::mpsc::channel::<TransportSnapshot>(32);
         self.master_runtime.spawn(async move {
             loop {
                 let transport_snapshot = transport_info_receiver.recv().await;
                 match transport_snapshot {
                     None => {
+                        tokio::time::interval(Duration::from_secs(10));
                         continue;
                     }
                     Some(snapshot) => {
@@ -139,7 +159,8 @@ impl Server {
     }
 
     pub fn shutdown(self) {
-        self.master_runtime.shutdown_timeout(Duration::from_secs(20));
+        self.master_runtime
+            .shutdown_timeout(Duration::from_secs(20));
         info!("Graceful shutdown ppaass server.")
     }
 }
