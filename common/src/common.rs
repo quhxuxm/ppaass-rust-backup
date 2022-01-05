@@ -1,3 +1,5 @@
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 use std::str::FromStr;
 
@@ -46,6 +48,39 @@ pub struct PpaassAddress {
     host: Vec<u8>,
     port: u16,
     address_type: PpaassAddressType,
+}
+
+impl Display for PpaassAddress {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let host: String = match self.address_type {
+            PpaassAddressType::IpV4 => {
+                let mut result = String::new();
+                (0..4).for_each(|index| {
+                    result.push_str(self.host[index].to_string().as_str());
+                    result.push('.');
+                });
+                result.remove(result.len() - 1);
+                result
+            }
+            PpaassAddressType::IpV6 => {
+                let mut result = String::new();
+                (0..16).for_each(|index| {
+                    result.push_str(self.host[index].to_string().as_str());
+                    result.push(':');
+                });
+                result.remove(result.len() - 1);
+                result
+            }
+            PpaassAddressType::Domain => {
+                String::from_utf8(self.host.clone()).unwrap_or_else(|e| format!("{:#?}", e))
+            }
+        };
+        f.debug_struct("PpaassAddress")
+            .field("host", &host)
+            .field("port", &self.port)
+            .field("type", &self.address_type)
+            .finish()
+    }
 }
 
 impl TryFrom<String> for PpaassAddress {

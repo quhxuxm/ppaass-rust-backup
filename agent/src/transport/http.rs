@@ -76,7 +76,9 @@ impl Transport for HttpTransport {
         rsa_public_key: String,
         rsa_private_key: String,
     ) -> Result<()> {
-        let init_result = self.init(client_tcp_stream, rsa_public_key, rsa_private_key).await?;
+        let init_result = self
+            .init(client_tcp_stream, rsa_public_key, rsa_private_key)
+            .await?;
         return match init_result {
             None => Ok(()),
             Some(init_result) => {
@@ -107,7 +109,9 @@ impl Transport for HttpTransport {
     async fn close(&mut self) -> Result<()> {
         self.status = TransportStatus::Closed;
         self.end_time = Some(
-            SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?.as_millis(),
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)?
+                .as_millis(),
         );
         info!("Graceful close http transport [{}]", self.id);
         Ok(())
@@ -119,12 +123,17 @@ impl HttpTransport {
         configuration: Arc<AgentConfiguration>,
         snapshot_sender: Sender<TransportSnapshot>,
     ) -> Result<Self> {
-        let user_token = configuration.user_token().clone().context("Can not get user token from configuration.")?;
+        let user_token = configuration
+            .user_token()
+            .clone()
+            .context("Can not get user token from configuration.")?;
         Ok(Self {
             id: generate_uuid(),
             status: TransportStatus::New,
             start_time: {
-                SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?.as_millis()
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)?
+                    .as_millis()
             },
             end_time: None,
             user_token: user_token.into_bytes(),
@@ -201,7 +210,11 @@ impl HttpTransport {
             }
             Some(h) => h.to_string(),
         };
-        let proxy_addresses = self.configuration.proxy_addresses().clone().context("Proxy address did not configure properly")?;
+        let proxy_addresses = self
+            .configuration
+            .proxy_addresses()
+            .clone()
+            .context("Proxy address did not configure properly")?;
         let mut proxy_addresses_iter = proxy_addresses.iter();
         let proxy_stream: Option<TcpStream> = loop {
             let proxy_address = proxy_addresses_iter.next();
@@ -258,10 +271,13 @@ impl HttpTransport {
             rsa_public_key,
             rsa_private_key,
             proxy_stream,
-            self.configuration.buffer_size().unwrap_or(DEFAULT_TCP_BUFFER_SIZE),
+            self.configuration
+                .buffer_size()
+                .unwrap_or(DEFAULT_TCP_BUFFER_SIZE),
         );
         let source_address = PpaassAddress::new(client_ip, client_port, PpaassAddressType::IpV4);
-        let target_address: PpaassAddress = format!("{}:{}", target_host, target_port).try_into()?;
+        let target_address: PpaassAddress =
+            format!("{}:{}", target_host, target_port).try_into()?;
         let connect_message_payload = PpaassAgentMessagePayload::new(
             source_address.clone(),
             target_address.clone(),
@@ -277,35 +293,24 @@ impl HttpTransport {
         );
         proxy_framed.send(connect_message).await?;
         proxy_framed.flush().await?;
-        let mut proxy_connect_response = proxy_framed.next().await;
-        let mut retry_times = 0;
-        let proxy_message = loop {
-            match proxy_connect_response {
-                None => {
-                    tokio::time::sleep(Duration::from_secs(10)).await;
-                    if retry_times > 2 {
-                        info!("Retry 3 times to read proxy message for http transport [{}] but still fail.", transport_id);
-                        Self::send_error_to_client(client_stream_framed).await?;
-                        return Err(PpaassAgentError::FailToConnectProxy.into());
-                    }
-                    retry_times += 1;
-                    info!(
-                        "Retry to read proxy message for http transport [{}] ...",
-                        transport_id
-                    );
-                    proxy_connect_response = proxy_framed.next().await;
-                    continue;
-                }
-                Some(response) => match response {
-                    Err(e) => {
-                        Self::send_error_to_client(client_stream_framed).await?;
-                        return Err(PpaassAgentError::FailToConnectProxy.into());
-                    }
-                    Ok(r) => {
-                        break r;
-                    }
-                },
+        let proxy_connect_response = proxy_framed.next().await;
+        let proxy_message = match proxy_connect_response {
+            None => {
+                error!("Fail to read proxy connect response message for http transport: [{}], target:[{}] , None received from proxy", transport_id, target_address);
+                Self::send_error_to_client(client_stream_framed).await?;
+                return Err(PpaassAgentError::FailToConnectProxy.into());
             }
+            Some(response) => match response {
+                Err(e) => {
+                    error!("Fail to read proxy connect response message for http transport: [{}], target:[{}]  , error: {:#?}", transport_id, target_address, e);
+                    Self::send_error_to_client(client_stream_framed).await?;
+                    return Err(PpaassAgentError::FailToConnectProxy.into());
+                }
+                Ok(r) => {
+                    info!("Success receive proxy connect response message for http transport: [{}], target:[{}]", transport_id, target_address);
+                    r
+                }
+            },
         };
         let PpaassMessageSplitResult {
             id: proxy_message_id,
@@ -328,7 +333,9 @@ impl HttpTransport {
                             ReasonPhrase::new(CONNECTION_ESTABLISHED).unwrap(),
                             vec![],
                         );
-                        client_stream_framed.send(http_connect_success_response).await?;
+                        client_stream_framed
+                            .send(http_connect_success_response)
+                            .await?;
                         client_stream_framed.flush().await?;
                     }
                     Some(_) => {
@@ -368,7 +375,8 @@ impl HttpTransport {
                 self.id.clone(),
                 TransportStatus::TcpConnected,
                 self.status,
-            ).into());
+            )
+            .into());
         }
         let InitResult {
             http_init_message,
@@ -382,7 +390,8 @@ impl HttpTransport {
         let (mut proxy_framed_write, mut proxy_framed_read) = proxy_framed.split();
         self.status = TransportStatus::Relaying;
         let user_token = self.user_token.clone();
-        let (mut client_tcp_stream_read, mut client_tcp_stream_write) = client_tcp_stream.into_split();
+        let (mut client_tcp_stream_read, mut client_tcp_stream_write) =
+            client_tcp_stream.into_split();
         let transport_id_for_proxy_to_client_relay = self.id.clone();
         let transport_id_for_client_to_proxy_relay = self.id.clone();
         let connect_message_id_for_client_to_proxy_relay = connect_message_id.clone();
