@@ -1,3 +1,4 @@
+use std::io::{Error, ErrorKind};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -490,7 +491,6 @@ impl Transport {
         let (mut agent_write_part, mut agent_read_part) = agent_stream_framed.split();
         let transport_id_for_target_to_proxy_relay = self.id.clone();
         let transport_id_for_proxy_to_target_relay = self.id.clone();
-
         let proxy_to_target_relay = tokio::spawn(async move {
             loop {
                 info!(
@@ -583,6 +583,11 @@ impl Transport {
                 let mut target_read_buf = Vec::<u8>::with_capacity(target_to_proxy_buffer_size);
                 let read_size = match target_read.read_buf(&mut target_read_buf).await {
                     Err(e) => {
+                        if e.kind() == ErrorKind::ConnectionReset {
+                            error!("Fail to read target data because of connection reset, continue read target data, tcp transport: [{}], target address: [{}], error: {:#?}",
+                            transport_id_for_target_to_proxy_relay,target_address_for_target_to_proxy_relay, e);
+                            continue;
+                        }
                         error!("Fail to read target data because of error, tcp transport: [{}], target address: [{}], error: {:#?}",
                             transport_id_for_target_to_proxy_relay,target_address_for_target_to_proxy_relay, e);
                         return;
