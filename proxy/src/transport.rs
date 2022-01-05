@@ -508,7 +508,7 @@ impl Transport {
                             }
                             _=>{
                                 error!("Fail to send target data from proxy to client because of signal error, broken pipe,  tcp transport: [{}], target address: [{}], error: {:#?}",
-                                        transport_id_for_target_to_proxy_relay,  target_address_for_target_to_proxy_relay, signal_error);
+                                        transport_id_for_proxy_to_target_relay,  target_address_for_proxy_to_target_relay, signal_error);
                                 return;
                             }
                         }
