@@ -1,7 +1,7 @@
 port = 80
 #port = 9999
-buffer_size = 10485760
-max_frame_size = 20971520
+buffer_size = 4194304
+max_frame_size = 8388608
 master_thread_number = 32
 worker_thread_number = 256
 max_blocking_threads = 32
