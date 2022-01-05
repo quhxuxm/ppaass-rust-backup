@@ -27,7 +27,7 @@ use ppaass_common::proxy::{PpaassProxyMessagePayload, PpaassProxyMessagePayloadT
 
 use crate::codec::http::HttpCodec;
 use crate::common::ProxyAddress;
-use crate::config::{AgentConfiguration, DEFAULT_TCP_BUFFER_SIZE};
+use crate::config::{AgentConfiguration, DEFAULT_TCP_BUFFER_SIZE, DEFAULT_TCP_MAX_FRAME_SIZE};
 use crate::error::PpaassAgentError;
 use crate::transport::common::{
     Transport, TransportSnapshot, TransportSnapshotType, TransportStatus,
@@ -272,8 +272,8 @@ impl HttpTransport {
             rsa_private_key,
             proxy_stream,
             self.configuration
-                .buffer_size()
-                .unwrap_or(DEFAULT_TCP_BUFFER_SIZE),
+                .max_frame_size()
+                .unwrap_or(DEFAULT_TCP_MAX_FRAME_SIZE),
         );
         let source_address = PpaassAddress::new(client_ip, client_port, PpaassAddressType::IpV4);
         let target_address: PpaassAddress =

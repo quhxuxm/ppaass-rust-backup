@@ -44,9 +44,9 @@ where Self: Send, {
         rsa_public_key: String,
         rsa_private_key: String,
         proxy_stream: TcpStream,
-        buffer_size: usize,
+        max_frame_size: usize,
     ) -> Framed<TcpStream, PpaassMessageCodec> {
-        let ppaass_message_codec = PpaassMessageCodec::new(rsa_public_key, rsa_private_key, buffer_size);
+        let ppaass_message_codec = PpaassMessageCodec::new(rsa_public_key, rsa_private_key, max_frame_size);
         let mut proxy_framed = ppaass_message_codec.framed(proxy_stream);
         proxy_framed
     }

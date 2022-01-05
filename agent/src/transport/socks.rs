@@ -23,7 +23,10 @@ use ppaass_common::proxy::PpaassProxyMessagePayload;
 
 use crate::codec::socks::{Socks5AuthCodec, Socks5ConnectCodec};
 use crate::common::ProxyAddress;
-use crate::config::{AgentConfiguration, DEFAULT_TCP_BUFFER_SIZE, DEFAULT_UDP_BUFFER_SIZE};
+use crate::config::{
+    AgentConfiguration, DEFAULT_TCP_BUFFER_SIZE, DEFAULT_TCP_MAX_FRAME_SIZE,
+    DEFAULT_UDP_BUFFER_SIZE,
+};
 use crate::error::PpaassAgentError;
 use crate::protocol::socks::{
     Socks5AddrType, Socks5AuthMethod, Socks5AuthResponse, Socks5ConnectRequestType,
@@ -269,8 +272,8 @@ impl Socks5Transport {
                     rsa_private_key,
                     proxy_stream,
                     self.configuration
-                        .buffer_size()
-                        .unwrap_or(DEFAULT_TCP_BUFFER_SIZE),
+                        .max_frame_size()
+                        .unwrap_or(DEFAULT_TCP_MAX_FRAME_SIZE),
                 );
                 if let Err(e) = proxy_framed.send(connect_message).await {
                     error!("Fail to send connect to proxy, because of error, socks5 transport: [{}], error: {:#?}", self.id, e);
@@ -359,7 +362,9 @@ impl Socks5Transport {
                     rsa_public_key,
                     rsa_private_key,
                     proxy_stream,
-                    self.configuration.buffer_size().unwrap_or(64 * 1024),
+                    self.configuration
+                        .max_frame_size()
+                        .unwrap_or(DEFAULT_TCP_MAX_FRAME_SIZE),
                 );
                 let udp_source_address = PpaassAddress::new(
                     source_address.host().to_vec(),

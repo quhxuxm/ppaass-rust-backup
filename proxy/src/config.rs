@@ -2,12 +2,14 @@ use serde_derive::Deserialize;
 use serde_derive::Serialize;
 
 pub const DEFAULT_TCP_BUFFER_SIZE: usize = 128 * 1024;
-pub const DEFAULT_UDP_BUFFER_SIZE: usize=65536;
+pub const DEFAULT_TCP_MAX_FRAME_SIZE: usize = DEFAULT_TCP_BUFFER_SIZE * 2;
+pub const DEFAULT_UDP_BUFFER_SIZE: usize = 65536;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct ProxyConfiguration {
     port: Option<u16>,
     buffer_size: Option<usize>,
+    max_frame_size: Option<usize>,
     master_thread_number: Option<usize>,
     worker_thread_number: Option<usize>,
     max_blocking_threads: Option<usize>,
@@ -26,6 +28,11 @@ impl ProxyConfiguration {
     pub fn buffer_size(&self) -> Option<usize> {
         self.buffer_size
     }
+
+    pub fn max_frame_size(&self) -> Option<usize> {
+        self.max_frame_size
+    }
+
     pub fn master_thread_number(&self) -> Option<usize> {
         self.master_thread_number
     }

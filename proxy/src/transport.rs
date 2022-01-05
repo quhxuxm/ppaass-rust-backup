@@ -23,7 +23,10 @@ use ppaass_common::common::{
 };
 use ppaass_common::generate_uuid;
 
-use crate::config::{ProxyConfiguration, DEFAULT_TCP_BUFFER_SIZE, DEFAULT_UDP_BUFFER_SIZE};
+use crate::config::{
+    ProxyConfiguration, DEFAULT_TCP_BUFFER_SIZE, DEFAULT_TCP_MAX_FRAME_SIZE,
+    DEFAULT_UDP_BUFFER_SIZE,
+};
 use crate::error::PpaassProxyError;
 
 type AgentStreamFramed = Framed<TcpStream, PpaassMessageCodec>;
@@ -117,8 +120,8 @@ impl Transport {
             rsa_public_key.into(),
             rsa_private_key.into(),
             self.configuration
-                .buffer_size()
-                .unwrap_or(DEFAULT_TCP_BUFFER_SIZE),
+                .max_frame_size()
+                .unwrap_or(DEFAULT_TCP_MAX_FRAME_SIZE),
         );
         let agent_stream_framed = Framed::with_capacity(
             agent_stream,
@@ -597,11 +600,13 @@ impl Transport {
                             tcp_connection_close_message_payload.into(),
                         );
                     if let Err(e) = agent_write_part.send(tcp_connection_close_message).await {
-                        error!("Fail to send connection close from proxy to client because of error: {:#?}", e);
+                        error!("Fail to send connection close from proxy to client because of error, tcp transport: [{}], error: {:#?}",
+                            transport_id_for_target_to_proxy_relay, e);
                         return;
                     };
                     if let Err(e) = agent_write_part.flush().await {
-                        error!("Fail to flush connection close from proxy to client because of error: {:#?}", e);
+                        error!("Fail to flush connection close from proxy to client because of error, tcp transport: [{}], error: {:#?}",
+                            transport_id_for_target_to_proxy_relay,e);
                         return;
                     };
                     return;
