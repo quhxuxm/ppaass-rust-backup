@@ -448,8 +448,8 @@ impl Transport {
                 }
             }
         });
-//        proxy_to_target_relay.await?;
-//        target_to_proxy_relay.await?;
+        proxy_to_target_relay.await?;
+        target_to_proxy_relay.await?;
         Ok(())
     }
 
@@ -687,9 +687,9 @@ impl Transport {
                 };
             }
         });
-//        target_to_proxy_relay.await?;
-//        proxy_to_target_relay.await?;
-//        self.publish_transport_snapshot().await?;
+        target_to_proxy_relay.await?;
+        proxy_to_target_relay.await?;
+        self.publish_transport_snapshot().await?;
         Ok(())
     }
 

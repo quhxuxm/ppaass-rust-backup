@@ -920,8 +920,8 @@ impl Socks5Transport {
                 }
             }
         });
-        client_to_proxy_relay.await?;
-        proxy_to_client_relay.await?;
+//        client_to_proxy_relay.await?;
+//        proxy_to_client_relay.await?;
         Ok(())
     }
 }
