@@ -23,6 +23,7 @@ use ppaass_common::common::{
     PpaassAddress, PpaassAddressType, PpaassMessage, PpaassMessageSplitResult,
     PpaassProxyMessagePayload, PpaassProxyMessagePayloadType,
 };
+use ppaass_common::error::PpaassCommonError;
 use ppaass_common::generate_uuid;
 
 use crate::config::{
@@ -491,12 +492,19 @@ impl Transport {
         let (mut agent_write_part, mut agent_read_part) = agent_stream_framed.split();
         let transport_id_for_target_to_proxy_relay = self.id.clone();
         let transport_id_for_proxy_to_target_relay = self.id.clone();
+        let (mut target_to_proxy_stop_signal_sender, mut target_to_proxy_stop_signal_receiver) =
+            tokio::sync::mpsc::channel::<bool>(32);
         let proxy_to_target_relay = tokio::spawn(async move {
             loop {
                 info!(
                     "Begin to loop for tcp relay from proxy to target for tcp transport: [{}]",
                     transport_id_for_proxy_to_target_relay
                 );
+                if let Some(signal) = target_to_proxy_stop_signal_receiver.recv().await {
+                    if signal {
+                        return;
+                    }
+                }
                 let agent_tcp_data_message = agent_read_part.next().await;
                 let agent_tcp_data_message = match agent_tcp_data_message {
                     None => {
@@ -645,11 +653,37 @@ impl Transport {
                     tcp_data_success_message_payload.into(),
                 );
                 if let Err(e) = agent_write_part.send(tcp_data_success_message).await {
-                    error!(
-                        "Fail to send target data from proxy to client because of error, tcp transport: [{}], target address: [{}], error: {:#?}",
-                      transport_id_for_target_to_proxy_relay,  target_address_for_target_to_proxy_relay, e
-                    );
-                    return;
+                    match e {
+                        PpaassCommonError::IoError { source } => match source.kind() {
+                            ErrorKind::BrokenPipe => {
+                                error!("Fail to send target data from proxy to client because of error, broken pipe,  tcp transport: [{}], target address: [{}], error: {:#?}",
+                                        transport_id_for_target_to_proxy_relay,  target_address_for_target_to_proxy_relay, source);
+                                if let Err(signal_error) =
+                                    target_to_proxy_stop_signal_sender.send(true).await
+                                {
+                                    error!("Fail to send target data from proxy to client because of signal error, broken pipe,  tcp transport: [{}], target address: [{}], error: {:#?}",
+                                        transport_id_for_target_to_proxy_relay,  target_address_for_target_to_proxy_relay, signal_error);
+                                    return;
+                                };
+                                return;
+                            }
+                            ErrorKind::ConnectionReset => {
+                                error!("Fail to send target data from proxy to client because of error, connection reset, write again,  tcp transport: [{}], target address: [{}], error: {:#?}",
+                                        transport_id_for_target_to_proxy_relay,  target_address_for_target_to_proxy_relay, source);
+                                continue;
+                            }
+                            _ => {
+                                error!("Fail to send target data from proxy to client because of io error, tcp transport: [{}], target address: [{}], error: {:#?}",
+                                        transport_id_for_target_to_proxy_relay,  target_address_for_target_to_proxy_relay, source);
+                                return;
+                            }
+                        },
+                        _ => {
+                            error!("Fail to send target data from proxy to client because of error, tcp transport: [{}], target address: [{}], error: {:#?}",
+                                transport_id_for_target_to_proxy_relay,  target_address_for_target_to_proxy_relay, e);
+                            return;
+                        }
+                    }
                 };
                 if let Err(e) = agent_write_part.flush().await {
                     error!(
