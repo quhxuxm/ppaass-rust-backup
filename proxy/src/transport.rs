@@ -555,7 +555,7 @@ impl Transport {
                     }
                     Ok(size) => size,
                 };
-                if read_size == 0 && target_read_buf.remaining_mut() > 0 {
+                if read_size == 0 {
                     info!(
                         "Nothing to read from target, tcp transport: [{}]",
                         transport_id_for_target_to_proxy_relay

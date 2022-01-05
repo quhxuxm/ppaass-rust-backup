@@ -533,8 +533,8 @@ impl Socks5Transport {
                 }
                 Ok(stream) => {
                     info!(
-                        "Success connect to proxy address: [{}]",
-                        proxy_address_string
+                        "Success connect to proxy address, socks5 transport:[{}], proxy: [{}]",
+                        self.id, proxy_address_string
                     );
                     break Some(stream);
                 }

@@ -219,15 +219,15 @@ impl HttpTransport {
                     match TcpStream::connect(proxy_address_string.clone()).await {
                         Err(e) => {
                             error!(
-                                "Fail connect to proxy address: [{}] because of error: {:#?}",
-                                proxy_address_string, e
+                                "Fail connect to proxy: [{}] because of error, http transport:[{}], error: {:#?}",
+                                self.id, proxy_address_string, e
                             );
                             continue;
                         }
                         Ok(stream) => {
                             info!(
-                                "Success connect to proxy address: [{}]",
-                                proxy_address_string
+                                "Success connect to proxy, http transport:[{}], proxy: [{}]",
+                                self.id, proxy_address_string
                             );
                             break Some(stream);
                         }
