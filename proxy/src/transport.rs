@@ -600,29 +600,8 @@ impl Transport {
                 let mut target_read_buf = Vec::<u8>::with_capacity(target_to_proxy_buffer_size);
                 let read_size = match target_read.read_buf(&mut target_read_buf).await {
                     Err(e) => {
-                        let tcp_connection_close_message_payload = PpaassProxyMessagePayload::new(
-                            source_address_for_target_to_proxy_relay.clone(),
-                            target_address_for_target_to_proxy_relay.clone(),
-                            PpaassProxyMessagePayloadType::TcpConnectionClose,
-                            target_read_buf,
-                        );
-                        let tcp_connection_close_message =
-                            PpaassMessage::new_with_random_encryption_type(
-                                "".to_string(),
-                                user_token_for_target_to_proxy_relay.clone(),
-                                generate_uuid().as_bytes().to_vec(),
-                                tcp_connection_close_message_payload.into(),
-                            );
-                        if let Err(e) = agent_write_part.send(tcp_connection_close_message).await {
-                            error!("Fail to send connection close from proxy to client because of error, tcp transport: [{}], target address: [{}], error: {:#?}",
+                        error!("Fail to read target data because of error, tcp transport: [{}], target address: [{}], error: {:#?}",
                             transport_id_for_target_to_proxy_relay, target_address_for_target_to_proxy_relay, e);
-                            return;
-                        };
-                        if let Err(e) = agent_write_part.flush().await {
-                            error!("Fail to flush connection close from proxy to client because of error, tcp transport: [{}], target address: [{}], error: {:#?}",
-                            transport_id_for_target_to_proxy_relay,target_address_for_target_to_proxy_relay, e);
-                            return;
-                        };
                         return;
                     }
                     Ok(size) => size,
@@ -684,30 +663,9 @@ impl Transport {
                     tcp_data_success_message_payload.into(),
                 );
                 if let Err(e) = agent_write_part.send(tcp_data_success_message).await {
-                    match e {
-                        PpaassCommonError::IoError { source } => match source.kind() {
-                            ErrorKind::BrokenPipe => {
-                                error!("Fail to send target data from proxy to client because of error, broken pipe,  tcp transport: [{}], target address: [{}], error: {:#?}",
-                                        transport_id_for_target_to_proxy_relay,  target_address_for_target_to_proxy_relay, source);
-                                return;
-                            }
-                            ErrorKind::ConnectionReset => {
-                                error!("Fail to send target data from proxy to client because of error, connection reset, write again,  tcp transport: [{}], target address: [{}], error: {:#?}",
-                                        transport_id_for_target_to_proxy_relay,  target_address_for_target_to_proxy_relay, source);
-                                continue;
-                            }
-                            _ => {
-                                error!("Fail to send target data from proxy to client because of io error, tcp transport: [{}], target address: [{}], error: {:#?}",
-                                        transport_id_for_target_to_proxy_relay,  target_address_for_target_to_proxy_relay, source);
-                                return;
-                            }
-                        },
-                        _ => {
-                            error!("Fail to send target data from proxy to client because of error, tcp transport: [{}], target address: [{}], error: {:#?}",
+                    error!("Fail to send target data from proxy to client because of error, tcp transport: [{}], target address: [{}], error: {:#?}",
                                 transport_id_for_target_to_proxy_relay,  target_address_for_target_to_proxy_relay, e);
-                            return;
-                        }
-                    }
+                    return;
                 };
                 if let Err(e) = agent_write_part.flush().await {
                     error!(
