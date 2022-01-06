@@ -526,6 +526,7 @@ impl Socks5Transport {
                         "Success connect to proxy address, socks5 transport:[{}], proxy: [{}]",
                         self.id, proxy_address_string
                     );
+                    stream.set_nodelay(true)?;
                     break Some(stream);
                 }
             }

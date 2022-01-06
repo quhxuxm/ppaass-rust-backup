@@ -119,27 +119,31 @@ impl Server {
             //Start to processing client protocol
             info!("Success to bind TCP server on port: [{}]", local_port);
             loop {
-                let agent_connection_accept_result = tcp_listener.accept().await;
-                if let Err(e) = agent_connection_accept_result {
-                    error!("Fail to accept agent protocol because of error: {:#?}", e);
-                    continue;
-                }
-                let (agent_stream, agent_remote_addr) = agent_connection_accept_result.unwrap();
-                if let Err(e) = agent_stream.set_nodelay(true) {
-                    error!("Fail to set no delay on agent stream because of error, agent stream:{:?}, error: {:#?}", agent_stream, e);
-                }
+                let (agent_stream, agent_remote_addr)  =match  tcp_listener.accept().await{
+                    Err(e)=>{
+                        error!("Fail to accept agent protocol because of error: {:#?}", e);
+                        continue;
+                    }
+                    Ok(r)=>{
+                        if let Err(e) = r.0.set_nodelay(true) {
+                            error!("Fail to set no delay on agent stream because of error, agent stream:{:?}, error: {:#?}", r.0, e);
+                        }
+                        r
+                    }
+                };
                 let transport_info_sender = transport_info_sender.clone();
                 let agent_public_key = agent_public_key.clone();
                 let proxy_private_key = proxy_private_key.clone();
                 let proxy_server_config = proxy_server_config.clone();
                 worker_runtime.spawn(async move {
-                    let transport = Transport::new(agent_remote_addr,
-                        transport_info_sender.clone(), proxy_server_config);
-                    if let Err(e) = transport {
-                        error!("Fail to create agent tcp transport because of error, error: {:#?}",e );
-                        return;
-                    }
-                    let mut transport = transport.unwrap();
+                    let mut transport = match Transport::new(agent_remote_addr,
+                        transport_info_sender.clone(), proxy_server_config){
+                        Err(e)=>{
+                            error!("Fail to create agent tcp transport because of error, error: {:#?}",e );
+                            return;
+                        }
+                        Ok(r)=>r
+                    };
                     let transport_id = transport.id().to_string();
                     info!("Receive a agent stream from: [{}], assign it to transport: [{}].", agent_remote_addr, transport_id);
                     if let Err(e) = transport.start(agent_stream, agent_public_key, proxy_private_key).await {

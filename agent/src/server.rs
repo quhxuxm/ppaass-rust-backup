@@ -35,31 +35,43 @@ impl Server {
         let mut config_file = File::open(CONFIG_FILE_PATH)?;
         let mut config_file_content = String::new();
         config_file.read_to_string(&mut config_file_content)?;
-        let config = toml::from_str::<AgentConfiguration>(&config_file_content).with_context(|| "Fail to parse agent configuration file.")?;
-        log4rs::init_file(config.log_config().as_ref().unwrap(), Default::default()).with_context(|| "Fail to initialize agent configuration file.")?;
+        let config = toml::from_str::<AgentConfiguration>(&config_file_content)
+            .with_context(|| "Fail to parse agent configuration file.")?;
+        log4rs::init_file(config.log_config().as_ref().unwrap(), Default::default())
+            .with_context(|| "Fail to initialize agent configuration file.")?;
         let mut master_runtime_builder = tokio::runtime::Builder::new_multi_thread();
         master_runtime_builder.worker_threads(
-            config.master_thread_number().with_context(|| "Can not get worker threads number from agent configuration.")?,
+            config
+                .master_thread_number()
+                .with_context(|| "Can not get worker threads number from agent configuration.")?,
         );
         master_runtime_builder.max_blocking_threads(config.max_blocking_threads().with_context(
             || "Can not get max blocking threads number from agent configuration.",
         )?);
         master_runtime_builder.thread_name("agent-master");
         master_runtime_builder.thread_keep_alive(Duration::from_secs(
-            config.thread_timeout().with_context(|| "Can not get thread timeout from agent configuration.")?,
+            config
+                .thread_timeout()
+                .with_context(|| "Can not get thread timeout from agent configuration.")?,
         ));
         master_runtime_builder.enable_all();
-        let master_runtime = master_runtime_builder.build().with_context(|| "Fail to build init tokio runtime.")?;
+        let master_runtime = master_runtime_builder
+            .build()
+            .with_context(|| "Fail to build init tokio runtime.")?;
         let mut worker_runtime_builder = tokio::runtime::Builder::new_multi_thread();
         worker_runtime_builder.worker_threads(
-            config.worker_thread_number().with_context(|| "Can not get relay thread number from agent configuration.")?,
+            config
+                .worker_thread_number()
+                .with_context(|| "Can not get relay thread number from agent configuration.")?,
         );
         worker_runtime_builder.max_blocking_threads(config.max_blocking_threads().with_context(
             || "Can not get max blocking threads number from agent configuration.",
         )?);
         worker_runtime_builder.thread_name("agent-worker");
         worker_runtime_builder.thread_keep_alive(Duration::from_secs(
-            config.thread_timeout().with_context(|| "Can not get thread time out from agent configuration.")?,
+            config
+                .thread_timeout()
+                .with_context(|| "Can not get thread time out from agent configuration.")?,
         ));
         worker_runtime_builder.enable_all();
         let worker_runtime = worker_runtime_builder.build()?;
@@ -71,11 +83,14 @@ impl Server {
     }
 
     pub fn run(&self) -> Result<()> {
-        let agent_private_key = std::fs::read_to_string(Path::new(AGENT_PRIVATE_KEY_PATH)).expect("Fail to read agent private key.");
-        let proxy_public_key = std::fs::read_to_string(Path::new(PROXY_PUBLIC_KEY_PATH)).expect("Fail to read proxy public key.");
+        let agent_private_key = std::fs::read_to_string(Path::new(AGENT_PRIVATE_KEY_PATH))
+            .expect("Fail to read agent private key.");
+        let proxy_public_key = std::fs::read_to_string(Path::new(PROXY_PUBLIC_KEY_PATH))
+            .expect("Fail to read proxy public key.");
         let config = self.configuration.clone();
         let worker_runtime = self.worker_runtime.clone();
-        let (transport_info_sender, mut transport_info_receiver) = tokio::sync::mpsc::channel::<TransportSnapshot>(32);
+        let (transport_info_sender, mut transport_info_receiver) =
+            tokio::sync::mpsc::channel::<TransportSnapshot>(32);
         self.master_runtime.spawn(async move {
             loop {
                 let transport_snapshot = transport_info_receiver.recv().await;
@@ -101,15 +116,18 @@ impl Server {
             //Start to processing client protocol
             info!("Success to bind TCP server on port: [{}]", local_port);
             loop {
-                let client_connection_accept_result = tcp_listener.accept().await;
-                if let Err(e) = client_connection_accept_result {
-                    error!("Fail to accept client protocol because of error: {:#?}", e);
-                    continue;
-                }
-                let (client_stream, client_remote_addr) = client_connection_accept_result.unwrap();
-                if let Err(e) = client_stream.set_nodelay(true) {
-                    error!("Fail to set no delay on agent stream because of error, agent stream:{:?}, error: {:#?}", client_stream, e);
-                }
+                let (client_stream, client_remote_addr) = match tcp_listener.accept().await{
+                    Err(e)=>{
+                        error!("Fail to accept client protocol because of error: {:#?}", e);
+                        continue;
+                    }
+                    Ok(r)=>{
+                        if let Err(e) = r.0.set_nodelay(true) {
+                            error!("Fail to set no delay on agent stream because of error, agent stream:{:?}, error: {:#?}", r.0, e);
+                        }
+                        r
+                    }
+                };
                 let transport_info_sender = transport_info_sender.clone();
                 let agent_private_key = agent_private_key.clone();
                 let proxy_public_key = proxy_public_key.clone();
@@ -130,12 +148,13 @@ impl Server {
                         return;
                     }
                     if protocol_buf[0] == SOCKS5_VERSION {
-                        let socks5_transport = Socks5Transport::new(config.clone(), transport_info_sender.clone());
-                        if let Err(e) = socks5_transport {
-                            error!("Fail to create socks5 transport because of error, error: {:#?}",e );
-                            return;
-                        }
-                        let mut socks5_transport = socks5_transport.unwrap();
+                        let mut socks5_transport = match Socks5Transport::new(config.clone(), transport_info_sender.clone()){
+                            Err(e)=>{
+                                error!("Fail to create socks5 transport because of error, error: {:#?}",e );
+                                return;
+                            }
+                            Ok(r)=>r
+                        };
                         let socks5_transport_id = socks5_transport.id();
                         info!("Receive a client stream from: [{}], assign it to socks5 transport: [{}].", client_remote_addr, socks5_transport_id);
                         if let Err(e) = socks5_transport.start(client_stream, proxy_public_key, agent_private_key).await {
@@ -149,12 +168,13 @@ impl Server {
                         info!("Graceful close agent socks5 transport: [{}]", socks5_transport_id);
                         return;
                     }
-                    let http_transport = HttpTransport::new(config.clone(), transport_info_sender.clone());
-                    if let Err(e) = http_transport {
-                        error!("Fail to create agent http transport because of error, error: {:#?}",e );
-                        return;
-                    }
-                    let mut http_transport = http_transport.unwrap();
+                    let mut http_transport = match HttpTransport::new(config.clone(), transport_info_sender.clone()){
+                        Err(e)=>{
+                            error!("Fail to create agent http transport because of error, error: {:#?}",e );
+                            return;
+                        }
+                        Ok(r)=>r
+                    };
                     let http_transport_id = http_transport.id();
                     info!("Receive a client stream from: [{}], assign it to http transport: [{}].", client_remote_addr, http_transport_id);
                     if let Err(e) = http_transport.start(client_stream, proxy_public_key, agent_private_key).await {
@@ -173,7 +193,8 @@ impl Server {
     }
 
     pub fn shutdown(self) {
-        self.master_runtime.shutdown_timeout(Duration::from_secs(20));
+        self.master_runtime
+            .shutdown_timeout(Duration::from_secs(20));
         info!("Graceful shutdown ppaass server.")
     }
 }

@@ -150,7 +150,7 @@ impl Transport {
                 None => {
                     return Err(PpaassProxyError::UnknownError.into());
                 }
-                Some(target_tcp_stream) => {
+                Some(mut target_tcp_stream) => {
                     self.tcp_relay(agent_stream_framed, target_tcp_stream)
                         .await?;
                 }
@@ -202,7 +202,7 @@ impl Transport {
             PpaassAgentMessagePayloadType::TcpConnect => {
                 let target_socket_address: SocketAddr =
                     agent_message_target_address.clone().try_into()?;
-                let target_tcp_stream = match TcpStream::connect(target_socket_address).await {
+                let mut target_tcp_stream = match TcpStream::connect(target_socket_address).await {
                     Err(e) => {
                         error!("Fail connect to target, transport: [{}], agent message id: [{}], target address: [{}], because of error: {:#?}", agent_message_id, self.id, target_socket_address, e);
                         let tcp_connect_fail_message_payload = PpaassProxyMessagePayload::new(
@@ -232,8 +232,6 @@ impl Transport {
                     }
                     Ok(r) => {
                         r.set_nodelay(true)?;
-                        r.set_ttl(3600)?;
-                        r.set_linger(Some(Duration::from_secs(20)))?;
                         r
                     }
                 };
@@ -254,10 +252,12 @@ impl Transport {
                     agent_stream_framed.send(tcp_connect_success_message).await
                 {
                     error!("Fail to send connect success message to agent because of error, transport: [{}], error: {:#?}", self.id, ppaass_error);
+                    target_tcp_stream.shutdown().await?;
                     return Err(PpaassProxyError::UnknownError.into());
                 }
                 if let Err(unknwon_error) = agent_stream_framed.flush().await {
                     error!("Fail to send connect success message to agent because of error, transport: [{}], error: {:#?}", self.id, unknwon_error);
+                    target_tcp_stream.shutdown().await?;
                     return Err(PpaassProxyError::UnknownError.into());
                 }
                 self.user_token = Some(user_token.clone());
@@ -520,6 +520,10 @@ impl Transport {
                         Err(e) => {
                             error!("Fail to decode agent tcp message because of error, transport: [{}], target address:[{}]. error: {:#?}",
                                 transport_id_for_proxy_to_target_relay, target_address_for_proxy_to_target_relay, e);
+                            if let Err(e) = target_write.shutdown().await {
+                                error!("Fail to shutdown target tcp stream because of error, transport: [{}], target address:[{}]. error: {:#?}",
+                                transport_id_for_proxy_to_target_relay, target_address_for_proxy_to_target_relay, e);
+                            };
                             return;
                         }
                         Ok(r) => r,
@@ -536,6 +540,10 @@ impl Transport {
                     Err(e) => {
                         error!("Fail to parse agent message payload because of error, transport:[{}], target address: [{}], error: {:#?}",
                             transport_id_for_proxy_to_target_relay,target_address_for_proxy_to_target_relay,e);
+                        if let Err(e) = target_write.shutdown().await {
+                            error!("Fail to shutdown target tcp stream because of error, transport: [{}], target address:[{}]. error: {:#?}",
+                                transport_id_for_proxy_to_target_relay, target_address_for_proxy_to_target_relay, e);
+                        };
                         return;
                     }
                     Ok(r) => r,
@@ -592,13 +600,29 @@ impl Transport {
                 let mut target_read_buf = Vec::<u8>::with_capacity(target_to_proxy_buffer_size);
                 let read_size = match target_read.read_buf(&mut target_read_buf).await {
                     Err(e) => {
-                        if e.kind() == ErrorKind::ConnectionReset {
-                            error!("Fail to read target data because of connection reset, continue read target data, tcp transport: [{}], target address: [{}], error: {:#?}",
+                        let tcp_connection_close_message_payload = PpaassProxyMessagePayload::new(
+                            source_address_for_target_to_proxy_relay.clone(),
+                            target_address_for_target_to_proxy_relay.clone(),
+                            PpaassProxyMessagePayloadType::TcpConnectionClose,
+                            target_read_buf,
+                        );
+                        let tcp_connection_close_message =
+                            PpaassMessage::new_with_random_encryption_type(
+                                "".to_string(),
+                                user_token_for_target_to_proxy_relay.clone(),
+                                generate_uuid().as_bytes().to_vec(),
+                                tcp_connection_close_message_payload.into(),
+                            );
+                        if let Err(e) = agent_write_part.send(tcp_connection_close_message).await {
+                            error!("Fail to send connection close from proxy to client because of error, tcp transport: [{}], target address: [{}], error: {:#?}",
+                            transport_id_for_target_to_proxy_relay, target_address_for_target_to_proxy_relay, e);
+                            return;
+                        };
+                        if let Err(e) = agent_write_part.flush().await {
+                            error!("Fail to flush connection close from proxy to client because of error, tcp transport: [{}], target address: [{}], error: {:#?}",
                             transport_id_for_target_to_proxy_relay,target_address_for_target_to_proxy_relay, e);
-                            continue;
-                        }
-                        error!("Fail to read target data because of error, tcp transport: [{}], target address: [{}], error: {:#?}",
-                            transport_id_for_target_to_proxy_relay,target_address_for_target_to_proxy_relay, e);
+                            return;
+                        };
                         return;
                     }
                     Ok(size) => size,

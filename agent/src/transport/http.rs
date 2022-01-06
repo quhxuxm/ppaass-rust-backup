@@ -242,6 +242,7 @@ impl HttpTransport {
                                 "Success connect to proxy, http transport:[{}], proxy: [{}]",
                                 self.id, proxy_address_string
                             );
+                            stream.set_nodelay(true)?;
                             break Some(stream);
                         }
                     }
