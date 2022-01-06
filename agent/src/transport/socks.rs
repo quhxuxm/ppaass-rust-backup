@@ -720,9 +720,9 @@ impl Socks5Transport {
                             socks5_udp_data_response.into();
 
                         let udp_client_socket_address = PpaassAddress::new(
-                            proxy_message_payload_target_address.host().to_vec(),
+                            proxy_message_payload_source_address.host().to_vec(),
                             proxy_message_payload_source_address.port(),
-                            *proxy_message_payload_target_address.address_type(),
+                            *proxy_message_payload_source_address.address_type(),
                         );
                         let udp_client_socket_address: SocketAddr = match udp_client_socket_address
                             .try_into()
