@@ -1,7 +1,7 @@
 use std::io::{Error, ErrorKind};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use anyhow::Context;
 use anyhow::Result;
@@ -11,7 +11,7 @@ use futures_util::SinkExt;
 use log::{debug, error, info};
 use tokio::io::AsyncWriteExt;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
-use tokio::net::{TcpStream, UdpSocket};
+use tokio::net::{TcpSocket, TcpStream, UdpSocket};
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::Sender;
 use tokio_util::codec::Framed;
@@ -198,39 +198,46 @@ impl Transport {
             /// The data
                 data: agent_message_data,
         } = agent_message_body.split();
-        let target_tcp_stream: TcpStream;
         return match agent_message_payload_type {
             PpaassAgentMessagePayloadType::TcpConnect => {
                 let target_socket_address: SocketAddr =
                     agent_message_target_address.clone().try_into()?;
-                let target_stream_connect_result = TcpStream::connect(target_socket_address).await;
-                if let Err(e) = target_stream_connect_result {
-                    error!("Fail connect to target, transport: [{}], agent message id: [{}], target address: [{}], because of error: {:#?}", agent_message_id, self.id, target_socket_address, e);
-                    let tcp_connect_fail_message_payload = PpaassProxyMessagePayload::new(
-                        agent_message_source_address.clone(),
-                        agent_message_target_address.clone(),
-                        PpaassProxyMessagePayloadType::TcpConnectFail,
-                        vec![],
-                    );
-                    let tcp_connect_fail_message = PpaassMessage::new_with_random_encryption_type(
-                        agent_message_id.clone(),
-                        user_token.clone(),
-                        generate_uuid().as_bytes().to_vec(),
-                        tcp_connect_fail_message_payload.into(),
-                    );
-                    if let Err(ppaass_error) =
-                        agent_stream_framed.send(tcp_connect_fail_message).await
-                    {
-                        error!("Fail to send connect fail message to agent because of error, transport: [{}], error: {:#?}", self.id, ppaass_error);
+                let target_tcp_stream = match TcpStream::connect(target_socket_address).await {
+                    Err(e) => {
+                        error!("Fail connect to target, transport: [{}], agent message id: [{}], target address: [{}], because of error: {:#?}", agent_message_id, self.id, target_socket_address, e);
+                        let tcp_connect_fail_message_payload = PpaassProxyMessagePayload::new(
+                            agent_message_source_address.clone(),
+                            agent_message_target_address.clone(),
+                            PpaassProxyMessagePayloadType::TcpConnectFail,
+                            vec![],
+                        );
+                        let tcp_connect_fail_message =
+                            PpaassMessage::new_with_random_encryption_type(
+                                agent_message_id.clone(),
+                                user_token.clone(),
+                                generate_uuid().as_bytes().to_vec(),
+                                tcp_connect_fail_message_payload.into(),
+                            );
+                        if let Err(ppaass_error) =
+                            agent_stream_framed.send(tcp_connect_fail_message).await
+                        {
+                            error!("Fail to send connect fail message to agent because of error, transport: [{}], error: {:#?}", self.id, ppaass_error);
+                            return Err(PpaassProxyError::ConnectToTargetFail(e).into());
+                        }
+                        if let Err(unknwon_error) = agent_stream_framed.flush().await {
+                            error!("Fail to send connect fail message to agent because of error, transport: [{}], error: {:#?}", self.id, unknwon_error);
+                            return Err(PpaassProxyError::ConnectToTargetFail(e).into());
+                        }
                         return Err(PpaassProxyError::ConnectToTargetFail(e).into());
                     }
-                    if let Err(unknwon_error) = agent_stream_framed.flush().await {
-                        error!("Fail to send connect fail message to agent because of error, transport: [{}], error: {:#?}", self.id, unknwon_error);
-                        return Err(PpaassProxyError::ConnectToTargetFail(e).into());
+                    Ok(r) => {
+                        r.set_nodelay(true)?;
+                        r.set_ttl(3600)?;
+                        r.set_linger(Some(Duration::from_secs(20)))?;
+                        r
                     }
-                    return Err(PpaassProxyError::ConnectToTargetFail(e).into());
-                }
-                target_tcp_stream = target_stream_connect_result.unwrap();
+                };
+
                 let tcp_connect_success_message_payload = PpaassProxyMessagePayload::new(
                     agent_message_source_address.clone(),
                     agent_message_target_address.clone(),
