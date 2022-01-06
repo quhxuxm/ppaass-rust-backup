@@ -274,6 +274,7 @@ impl Socks5Transport {
                     self.configuration
                         .max_frame_size()
                         .unwrap_or(DEFAULT_TCP_MAX_FRAME_SIZE),
+                    self.configuration.compress().unwrap_or(false),
                 );
                 if let Err(e) = proxy_framed.send(connect_message).await {
                     error!("Fail to send connect to proxy, because of error, socks5 transport: [{}], error: {:#?}", self.id, e);
@@ -365,6 +366,7 @@ impl Socks5Transport {
                     self.configuration
                         .max_frame_size()
                         .unwrap_or(DEFAULT_TCP_MAX_FRAME_SIZE),
+                    self.configuration.compress().unwrap_or(false),
                 );
                 let udp_source_address = PpaassAddress::new(
                     source_address.host().to_vec(),
@@ -921,8 +923,8 @@ impl Socks5Transport {
                 }
             }
         });
-//        client_to_proxy_relay.await?;
-//        proxy_to_client_relay.await?;
+        //        client_to_proxy_relay.await?;
+        //        proxy_to_client_relay.await?;
         Ok(())
     }
 }

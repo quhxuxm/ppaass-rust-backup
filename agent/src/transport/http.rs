@@ -275,6 +275,7 @@ impl HttpTransport {
             self.configuration
                 .max_frame_size()
                 .unwrap_or(DEFAULT_TCP_MAX_FRAME_SIZE),
+            self.configuration.compress().unwrap_or(false),
         );
         let source_address = PpaassAddress::new(client_ip, client_port, PpaassAddressType::IpV4);
         let target_address: PpaassAddress =

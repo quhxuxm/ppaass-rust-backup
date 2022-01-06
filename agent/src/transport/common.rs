@@ -39,14 +39,18 @@ pub(crate) struct TransportSnapshot {
 
 #[async_trait]
 pub(crate) trait Transport
-where Self: Send, {
+where
+    Self: Send,
+{
     fn create_proxy_framed(
         rsa_public_key: String,
         rsa_private_key: String,
         proxy_stream: TcpStream,
         max_frame_size: usize,
+        compress: bool,
     ) -> Framed<TcpStream, PpaassMessageCodec> {
-        let ppaass_message_codec = PpaassMessageCodec::new(rsa_public_key, rsa_private_key, max_frame_size);
+        let ppaass_message_codec =
+            PpaassMessageCodec::new(rsa_public_key, rsa_private_key, max_frame_size, compress);
         let mut proxy_framed = ppaass_message_codec.framed(proxy_stream);
         proxy_framed
     }

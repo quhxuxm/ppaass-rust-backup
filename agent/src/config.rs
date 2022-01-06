@@ -21,6 +21,7 @@ pub struct AgentConfiguration {
     proxy_connection_max_idle: Option<u64>,
     client_connection_max_idle: Option<u64>,
     log_config: Option<String>,
+    compress: Option<bool>,
 }
 
 impl AgentConfiguration {
@@ -75,5 +76,8 @@ impl AgentConfiguration {
 
     pub fn client_connection_max_idle(&self) -> Option<u64> {
         self.client_connection_max_idle
+    }
+    pub fn compress(&self) -> Option<bool> {
+        self.compress
     }
 }

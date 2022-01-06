@@ -18,6 +18,7 @@ pub(crate) struct ProxyConfiguration {
     agent_connection_max_idle: Option<u64>,
     target_connection_max_idle: Option<u64>,
     log_config: Option<String>,
+    compress: Option<bool>,
 }
 
 impl ProxyConfiguration {
@@ -62,5 +63,8 @@ impl ProxyConfiguration {
 
     pub fn target_connection_max_idle(&self) -> Option<u64> {
         self.target_connection_max_idle
+    }
+    pub fn compress(&self) -> Option<bool> {
+        self.compress
     }
 }

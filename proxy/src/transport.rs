@@ -126,6 +126,7 @@ impl Transport {
             self.configuration
                 .max_frame_size()
                 .unwrap_or(DEFAULT_TCP_MAX_FRAME_SIZE),
+            self.configuration.compress().unwrap_or(false),
         );
         let agent_stream_framed = Framed::with_capacity(
             agent_stream,

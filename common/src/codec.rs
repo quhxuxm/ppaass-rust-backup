@@ -12,10 +12,16 @@ use crate::error::PpaassCommonError;
 pub struct PpaassMessageCodec {
     rsa_crypto: RsaCrypto,
     length_delimited_codec: LengthDelimitedCodec,
+    compress: bool,
 }
 
 impl PpaassMessageCodec {
-    pub fn new(public_key: String, private_key: String, max_frame_size: usize) -> Self {
+    pub fn new(
+        public_key: String,
+        private_key: String,
+        max_frame_size: usize,
+        compress: bool,
+    ) -> Self {
         let mut length_delimited_codec_builder = LengthDelimitedCodec::builder();
         length_delimited_codec_builder.max_frame_length(max_frame_size);
         length_delimited_codec_builder.length_field_length(8);
@@ -23,6 +29,7 @@ impl PpaassMessageCodec {
         Self {
             rsa_crypto: RsaCrypto::new(public_key, private_key),
             length_delimited_codec,
+            compress,
         }
     }
 }
@@ -37,9 +44,13 @@ impl Decoder for PpaassMessageCodec {
             None => return Ok(None),
             Some(r) => r,
         };
-        let lz4_bytes = length_delimited_decode_result.to_vec();
-        let lz4_decompress_result = decompress(lz4_bytes.as_slice(), None)?;
-        let encrypted_ppaass_message: PpaassMessage = lz4_decompress_result.try_into()?;
+        let encrypted_ppaass_message: PpaassMessage = if self.compress {
+            let lz4_bytes = length_delimited_decode_result.to_vec();
+            let lz4_decompress_result = decompress(lz4_bytes.as_slice(), None)?;
+            lz4_decompress_result.try_into()?
+        } else {
+            length_delimited_decode_result.to_vec().try_into()?
+        };
         debug!(
             "Decode ppaass message from input(encrypted): {:?}",
             encrypted_ppaass_message
@@ -55,14 +66,18 @@ impl Decoder for PpaassMessageCodec {
         let original_payload = match payload_encryption_type {
             PpaassMessagePayloadEncryptionType::Plain => encrypted_payload,
             PpaassMessagePayloadEncryptionType::Blowfish => {
-                let original_encryption_token = self.rsa_crypto.decrypt(rsa_encrypted_payload_encryption_token.as_slice())?;
+                let original_encryption_token = self
+                    .rsa_crypto
+                    .decrypt(rsa_encrypted_payload_encryption_token.as_slice())?;
                 decrypt_with_blowfish(
                     original_encryption_token.as_slice(),
                     encrypted_payload.as_slice(),
                 )
             }
             PpaassMessagePayloadEncryptionType::Aes => {
-                let original_encryption_token = self.rsa_crypto.decrypt(rsa_encrypted_payload_encryption_token.as_slice())?;
+                let original_encryption_token = self
+                    .rsa_crypto
+                    .decrypt(rsa_encrypted_payload_encryption_token.as_slice())?;
                 decrypt_with_aes(
                     original_encryption_token.as_slice(),
                     encrypted_payload.as_slice(),
@@ -101,7 +116,9 @@ impl Encoder<PpaassMessage> for PpaassMessageCodec {
             payload,
             ..
         } = original_message.split();
-        let rsa_encrypted_payload_encryption_token = self.rsa_crypto.encrypt(payload_encryption_token.as_slice())?;
+        let rsa_encrypted_payload_encryption_token = self
+            .rsa_crypto
+            .encrypt(payload_encryption_token.as_slice())?;
         let encrypted_payload = match payload_encryption_type {
             PpaassMessagePayloadEncryptionType::Plain => payload,
             PpaassMessagePayloadEncryptionType::Blowfish => {
@@ -122,8 +139,15 @@ impl Encoder<PpaassMessage> for PpaassMessageCodec {
             encrypted_message
         );
         let result_bytes: Vec<u8> = encrypted_message.into();
-        let lz4_compressed_bytes = compress(result_bytes.as_slice(), None, true)?;
-        self.length_delimited_codec.encode(Bytes::from(lz4_compressed_bytes), dst)?;
+
+        self.length_delimited_codec.encode(
+            Bytes::from(if self.compress {
+                compress(result_bytes.as_slice(), None, true)?
+            } else {
+                result_bytes
+            }),
+            dst,
+        )?;
         Ok(())
     }
 }
