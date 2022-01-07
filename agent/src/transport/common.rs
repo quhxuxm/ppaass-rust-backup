@@ -84,7 +84,10 @@ impl Display for TransportMetaInfo {
             .field("status", &self.status)
             .field("start_time", &self.start_time)
             .field("end_time", &self.end_time)
-            .field("user_token", &self.user_token)
+            .field(
+                "user_token",
+                &String::from_utf8(self.user_token.clone()).unwrap_or_else(|e| format!("{:#?}", e)),
+            )
             .field("client_remote_address", &self.client_remote_address)
             .field("source_address", &self.source_address)
             .field("target_address", &self.target_address)
