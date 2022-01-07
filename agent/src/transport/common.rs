@@ -79,7 +79,16 @@ impl TransportMetaInfo {
 
 impl Display for TransportMetaInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        f.debug_struct("TransportMetaInfo")
+            .field("id", &self.id)
+            .field("status", &self.status)
+            .field("start_time", &self.start_time)
+            .field("end_time", &self.end_time)
+            .field("user_token", &self.user_token)
+            .field("client_remote_address", &self.client_remote_address)
+            .field("source_address", &self.source_address)
+            .field("target_address", &self.target_address)
+            .finish()
     }
 }
 
