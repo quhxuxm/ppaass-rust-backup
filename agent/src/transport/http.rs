@@ -1,8 +1,8 @@
 use std::net::{IpAddr, SocketAddr};
-use std::sync::Arc;
 use std::time::SystemTime;
 
-use anyhow::{Context, Result};
+use anyhow::Context;
+use anyhow::Result;
 use async_trait::async_trait;
 use bytecodec::bytes::BytesEncoder;
 use bytecodec::EncodeExt;
@@ -30,7 +30,7 @@ use crate::common::ProxyAddress;
 use crate::config::{AgentConfiguration, DEFAULT_TCP_BUFFER_SIZE, DEFAULT_TCP_MAX_FRAME_SIZE};
 use crate::error::PpaassAgentError;
 use crate::transport::common::{
-    Transport, TransportSnapshot, TransportSnapshotType, TransportStatus,
+    Transport, TransportMetaInfo, TransportSnapshot, TransportSnapshotType, TransportStatus,
 };
 
 type HttpFramed<'a> = Framed<&'a mut TcpStream, HttpCodec>;
@@ -47,16 +47,7 @@ const ERROR_REASON: &str = " ";
 const CONNECTION_ESTABLISHED: &str = "Connection Established";
 
 pub(crate) struct HttpTransport {
-    id: String,
-    status: TransportStatus,
-    start_time: u128,
-    end_time: Option<u128>,
-    user_token: Vec<u8>,
-    client_remote_address: Option<SocketAddr>,
-    source_address: Option<PpaassAddress>,
-    target_address: Option<PpaassAddress>,
-    snapshot_sender: Sender<TransportSnapshot>,
-    configuration: Arc<AgentConfiguration>,
+    meta_info: TransportMetaInfo,
 }
 
 struct InitResult {
@@ -90,59 +81,33 @@ impl Transport for HttpTransport {
 
     fn take_snapshot(&self) -> TransportSnapshot {
         TransportSnapshot {
-            id: self.id.clone(),
+            id: self.meta_info.id.clone(),
             snapshot_type: TransportSnapshotType::HTTP,
-            status: self.status.clone(),
-            start_time: self.start_time,
-            end_time: self.end_time,
-            user_token: self.user_token.clone(),
-            client_remote_address: self.client_remote_address.clone(),
-            source_address: self.source_address.clone(),
-            target_address: self.target_address.clone(),
+            status: self.meta_info.status.clone(),
+            start_time: self.meta_info.start_time,
+            end_time: self.meta_info.end_time,
+            user_token: self.meta_info.user_token.clone(),
+            client_remote_address: self.meta_info.client_remote_address.clone(),
+            source_address: self.meta_info.source_address.clone(),
+            target_address: self.meta_info.target_address.clone(),
         }
     }
 
-    fn id(&self) -> String {
-        self.id.clone()
-    }
-
     async fn close(&mut self) -> Result<()> {
-        self.status = TransportStatus::Closed;
-        self.end_time = Some(
+        self.meta_info.status = TransportStatus::Closed;
+        self.meta_info.end_time = Some(
             SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)?
                 .as_millis(),
         );
-        info!("Graceful close http transport [{}]", self.id);
+        info!("Graceful close http transport [{}]", self.meta_info);
         Ok(())
     }
 }
 
 impl HttpTransport {
-    pub(crate) fn new(
-        configuration: Arc<AgentConfiguration>,
-        snapshot_sender: Sender<TransportSnapshot>,
-    ) -> Result<Self> {
-        let user_token = configuration
-            .user_token()
-            .clone()
-            .context("Can not get user token from configuration.")?;
-        Ok(Self {
-            id: generate_uuid(),
-            status: TransportStatus::New,
-            start_time: {
-                SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)?
-                    .as_millis()
-            },
-            end_time: None,
-            user_token: user_token.into_bytes(),
-            client_remote_address: None,
-            source_address: None,
-            target_address: None,
-            snapshot_sender,
-            configuration,
-        })
+    pub fn new(meta_info: TransportMetaInfo) -> Self {
+        Self { meta_info }
     }
 
     async fn send_error_to_client<'a>(mut client_http_framed: HttpFramed<'a>) -> Result<()> {
@@ -165,7 +130,7 @@ impl HttpTransport {
         rsa_public_key: String,
         rsa_private_key: String,
     ) -> Result<Option<InitResult>> {
-        let transport_id = self.id.clone();
+        let transport_id = self.meta_info.id.clone();
         let client_address = client_tcp_stream.peer_addr()?;
         let http_codec = HttpCodec::default();
         let mut client_stream_framed = http_codec.framed(&mut client_tcp_stream);
@@ -211,6 +176,7 @@ impl HttpTransport {
             Some(h) => h.to_string(),
         };
         let proxy_addresses = self
+            .meta_info
             .configuration
             .proxy_addresses()
             .clone()
@@ -233,14 +199,14 @@ impl HttpTransport {
                         Err(e) => {
                             error!(
                                 "Fail connect to proxy: [{}] because of error, http transport:[{}], error: {:#?}",
-                                self.id, proxy_address_string, e
+                                self.meta_info, proxy_address_string, e
                             );
                             continue;
                         }
                         Ok(stream) => {
                             info!(
                                 "Success connect to proxy, http transport:[{}], proxy: [{}]",
-                                self.id, proxy_address_string
+                                self.meta_info, proxy_address_string
                             );
                             stream.set_nodelay(true)?;
                             break Some(stream);
@@ -272,10 +238,11 @@ impl HttpTransport {
             rsa_public_key,
             rsa_private_key,
             proxy_stream,
-            self.configuration
+            self.meta_info
+                .configuration
                 .max_frame_size()
                 .unwrap_or(DEFAULT_TCP_MAX_FRAME_SIZE),
-            self.configuration.compress().unwrap_or(false),
+            self.meta_info.configuration.compress().unwrap_or(false),
         );
         let source_address = PpaassAddress::new(client_ip, client_port, PpaassAddressType::IpV4);
         let target_address: PpaassAddress =
@@ -288,7 +255,7 @@ impl HttpTransport {
         );
         let connect_message = PpaassMessage::new(
             "".to_string(),
-            self.user_token.clone(),
+            self.meta_info.user_token.clone(),
             generate_uuid().into_bytes(),
             PpaassMessagePayloadEncryptionType::random(),
             connect_message_payload.into(),
@@ -344,9 +311,9 @@ impl HttpTransport {
                         debug!("Http request do not need return connection established, http transport: [{}]", transport_id)
                     }
                 }
-                self.status = TransportStatus::TcpConnected;
-                self.source_address = Some(source_address.clone());
-                self.target_address = Some(target_address.clone());
+                self.meta_info.status = TransportStatus::TcpConnected;
+                self.meta_info.source_address = Some(source_address.clone());
+                self.meta_info.target_address = Some(target_address.clone());
                 return Ok(Some(InitResult {
                     client_tcp_stream,
                     proxy_framed,
@@ -372,11 +339,11 @@ impl HttpTransport {
     }
 
     async fn relay(&mut self, init_result: InitResult) -> Result<()> {
-        if self.status != TransportStatus::TcpConnected {
+        if self.meta_info.status != TransportStatus::TcpConnected {
             return Err(PpaassAgentError::InvalidTransportStatus(
-                self.id.clone(),
+                self.meta_info.id.clone(),
                 TransportStatus::TcpConnected,
-                self.status,
+                self.meta_info.status,
             )
             .into());
         }
@@ -390,12 +357,12 @@ impl HttpTransport {
             ..
         } = init_result;
         let (mut proxy_framed_write, mut proxy_framed_read) = proxy_framed.split();
-        self.status = TransportStatus::Relaying;
-        let user_token = self.user_token.clone();
+        self.meta_info.status = TransportStatus::Relaying;
+        let user_token = self.meta_info.user_token.clone();
         let (mut client_tcp_stream_read, mut client_tcp_stream_write) =
             client_tcp_stream.into_split();
-        let transport_id_for_proxy_to_client_relay = self.id.clone();
-        let transport_id_for_client_to_proxy_relay = self.id.clone();
+        let transport_id_for_proxy_to_client_relay = self.meta_info.id.clone();
+        let transport_id_for_client_to_proxy_relay = self.meta_info.id.clone();
         let connect_message_id_for_client_to_proxy_relay = connect_message_id.clone();
         let connect_message_id_for_proxy_to_client_relay = connect_message_id.clone();
         let client_to_proxy_relay = tokio::spawn(async move {

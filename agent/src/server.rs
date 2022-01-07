@@ -12,7 +12,7 @@ use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
 
 use crate::config::AgentConfiguration;
-use crate::transport::common::{Transport, TransportSnapshot, TransportStatus};
+use crate::transport::common::{Transport, TransportMetaInfo, TransportSnapshot, TransportStatus};
 use crate::transport::http::HttpTransport;
 use crate::transport::socks::Socks5Transport;
 
@@ -143,19 +143,21 @@ impl Server {
                         info!("No remaining data from client: {}", client_remote_addr);
                         return;
                     }
+
                     if protocol_buf[0] == SOCKS4_VERSION {
                         error!("Do not support socks 4 connection, client: {}", client_remote_addr);
                         return;
                     }
+                    let transport_meta_info=match  TransportMetaInfo::new(config.clone(), transport_info_sender.clone()){
+                        Err(e)=>{
+                            error!("Fail to create socks5 transport because of error, error: {:#?}",e );
+                            return;
+                        }
+                        Ok(r)=>r
+                    };
                     if protocol_buf[0] == SOCKS5_VERSION {
-                        let mut socks5_transport = match Socks5Transport::new(config.clone(), transport_info_sender.clone()){
-                            Err(e)=>{
-                                error!("Fail to create socks5 transport because of error, error: {:#?}",e );
-                                return;
-                            }
-                            Ok(r)=>r
-                        };
-                        let socks5_transport_id = socks5_transport.id();
+                        let socks5_transport_id = transport_meta_info.id.clone();
+                        let mut socks5_transport = Socks5Transport::new(transport_meta_info);
                         info!("Receive a client stream from: [{}], assign it to socks5 transport: [{}].", client_remote_addr, socks5_transport_id);
                         if let Err(e) = socks5_transport.start(client_stream, proxy_public_key, agent_private_key).await {
                             error!("Fail to start agent socks5 transport because of error, transport:[{}], agent address:[{}], error: {:#?}",socks5_transport_id,
@@ -168,14 +170,8 @@ impl Server {
                         info!("Graceful close agent socks5 transport: [{}]", socks5_transport_id);
                         return;
                     }
-                    let mut http_transport = match HttpTransport::new(config.clone(), transport_info_sender.clone()){
-                        Err(e)=>{
-                            error!("Fail to create agent http transport because of error, error: {:#?}",e );
-                            return;
-                        }
-                        Ok(r)=>r
-                    };
-                    let http_transport_id = http_transport.id();
+                    let http_transport_id = transport_meta_info.id.clone();
+                    let mut http_transport = HttpTransport::new(transport_meta_info);
                     info!("Receive a client stream from: [{}], assign it to http transport: [{}].", client_remote_addr, http_transport_id);
                     if let Err(e) = http_transport.start(client_stream, proxy_public_key, agent_private_key).await {
                         error!("Fail to start agent http transport because of error, transport:[{}], agent address:[{}], error: {:#?}",http_transport_id,
