@@ -1,7 +1,7 @@
-use std::io::{Error, ErrorKind};
+use std::fmt::{Display, Formatter};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -67,6 +67,21 @@ pub(crate) struct Transport {
     target_address: Option<PpaassAddress>,
     snapshot_sender: Sender<TransportSnapshot>,
     configuration: Arc<ProxyConfiguration>,
+}
+
+impl Display for Transport {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Transport")
+            .field("id", &self.id)
+            .field("status", &self.status)
+            .field("start_time", &self.start_time)
+            .field("end_time", &self.end_time)
+            .field("user_token", &self.user_token)
+            .field("agent_remote_address", &self.agent_remote_address)
+            .field("source_address", &self.source_address)
+            .field("target_address", &self.target_address)
+            .finish()
+    }
 }
 
 struct InitResult {
@@ -136,21 +151,21 @@ impl Transport {
         );
         // Initialize the target edge stream
         let init_result = self.init(agent_stream_framed).await?;
-        if init_result.is_none() {
-            return Ok(());
-        }
         let InitResult {
             agent_stream_framed,
             target_tcp_stream,
             target_udp_socket,
-        } = init_result.context("Fail to unwrap init result.")?;
+        } = match init_result {
+            None => return Ok(()),
+            Some(r) => r,
+        };
         // Start relay data
         match target_udp_socket {
             None => match target_tcp_stream {
                 None => {
                     return Err(PpaassProxyError::UnknownError.into());
                 }
-                Some(mut target_tcp_stream) => {
+                Some(target_tcp_stream) => {
                     self.tcp_relay(agent_stream_framed, target_tcp_stream)
                         .await?;
                 }
@@ -204,7 +219,7 @@ impl Transport {
                     agent_message_target_address.clone().try_into()?;
                 let mut target_tcp_stream = match TcpStream::connect(target_socket_address).await {
                     Err(e) => {
-                        error!("Fail connect to target, transport: [{}], agent message id: [{}], target address: [{}], because of error: {:#?}", agent_message_id, self.id, target_socket_address, e);
+                        error!("Fail connect to target, transport: [{}], agent message id: [{}], target address: [{}], because of error: {:#?}", agent_message_id, self, target_socket_address, e);
                         let tcp_connect_fail_message_payload = PpaassProxyMessagePayload::new(
                             agent_message_source_address.clone(),
                             agent_message_target_address.clone(),
@@ -221,11 +236,11 @@ impl Transport {
                         if let Err(ppaass_error) =
                             agent_stream_framed.send(tcp_connect_fail_message).await
                         {
-                            error!("Fail to send connect fail message to agent because of error, transport: [{}], error: {:#?}", self.id, ppaass_error);
+                            error!("Fail to send connect fail message to agent because of error, transport: [{}], error: {:#?}", self, ppaass_error);
                             return Err(PpaassProxyError::ConnectToTargetFail(e).into());
                         }
                         if let Err(unknwon_error) = agent_stream_framed.flush().await {
-                            error!("Fail to send connect fail message to agent because of error, transport: [{}], error: {:#?}", self.id, unknwon_error);
+                            error!("Fail to send connect fail message to agent because of error, transport: [{}], error: {:#?}", self, unknwon_error);
                             return Err(PpaassProxyError::ConnectToTargetFail(e).into());
                         }
                         return Err(PpaassProxyError::ConnectToTargetFail(e).into());
@@ -251,12 +266,12 @@ impl Transport {
                 if let Err(ppaass_error) =
                     agent_stream_framed.send(tcp_connect_success_message).await
                 {
-                    error!("Fail to send connect success message to agent because of error, transport: [{}], error: {:#?}", self.id, ppaass_error);
+                    error!("Fail to send connect success message to agent because of error, transport: [{}], error: {:#?}", self, ppaass_error);
                     target_tcp_stream.shutdown().await?;
                     return Err(PpaassProxyError::UnknownError.into());
                 }
                 if let Err(unknwon_error) = agent_stream_framed.flush().await {
-                    error!("Fail to send connect success message to agent because of error, transport: [{}], error: {:#?}", self.id, unknwon_error);
+                    error!("Fail to send connect success message to agent because of error, transport: [{}], error: {:#?}", self, unknwon_error);
                     target_tcp_stream.shutdown().await?;
                     return Err(PpaassProxyError::UnknownError.into());
                 }
@@ -294,11 +309,11 @@ impl Transport {
                     .send(udp_associate_success_message)
                     .await
                 {
-                    error!("Fail to send udp associate success message to agent because of error, transport: [{}], error: {:#?}", self.id, ppaass_error);
+                    error!("Fail to send udp associate success message to agent because of error, transport: [{}], error: {:#?}", self, ppaass_error);
                     return Err(PpaassProxyError::UnknownError.into());
                 }
                 if let Err(unknwon_error) = agent_stream_framed.flush().await {
-                    error!("Fail to send udp associate success message to agent because of error, transport: [{}], error: {:#?}", self.id, unknwon_error);
+                    error!("Fail to send udp associate success message to agent because of error, transport: [{}], error: {:#?}", self, unknwon_error);
                     return Err(PpaassProxyError::UnknownError.into());
                 }
                 self.user_token = Some(user_token.clone());
@@ -423,14 +438,16 @@ impl Transport {
                 let source_address_for_target_to_proxy_relay =
                     source_address_for_target_to_proxy_relay.clone();
                 let mut buf = [0u8; DEFAULT_UDP_BUFFER_SIZE];
-                let udp_relay_recv_result = target_udp_socket_for_target_to_proxy_relay
+                let udp_relay_recv_result = match target_udp_socket_for_target_to_proxy_relay
                     .recv_from(&mut buf)
-                    .await;
-                if let Err(e) = udp_relay_recv_result {
-                    error!("Fail to receive udp message from target because of error, transport: [{}], error: {:#?}", transport_id_for_target_to_proxy_relay, e);
-                    continue;
-                }
-                let udp_relay_recv_result = udp_relay_recv_result.unwrap();
+                    .await
+                {
+                    Err(e) => {
+                        error!("Fail to receive udp message from target because of error, transport: [{}], error: {:#?}", transport_id_for_target_to_proxy_relay, e);
+                        continue;
+                    }
+                    Ok(r) => r,
+                };
                 let (data_size, target_origin_address) = udp_relay_recv_result;
                 let udp_data_diagram = buf[..data_size].to_vec();
                 let target_address: PpaassAddress = target_origin_address.into();
@@ -466,7 +483,7 @@ impl Transport {
         target_tcp_stream: TcpStream,
     ) -> Result<()> {
         if self.status != TransportStatus::Initialized {
-            error!("Invalid tcp transport status, tcp transport: [{}], current status: [{:?}], expect status: [{:?}]", self.id,
+            error!("Invalid tcp transport status, tcp transport: [{}], current status: [{:?}], expect status: [{:?}]", self,
             self.status, TransportStatus::Initialized);
             return Err(PpaassProxyError::InvalidTcpTransportStatus(
                 self.id.clone(),
