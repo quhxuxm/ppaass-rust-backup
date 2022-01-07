@@ -12,7 +12,6 @@ use httpcodec::{BodyEncoder, HttpVersion, ReasonPhrase, RequestEncoder, Response
 use log::{debug, error, info};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::mpsc::Sender;
 use tokio_util::codec::{Decoder, Framed};
 use url::Url;
 

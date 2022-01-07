@@ -1,9 +1,8 @@
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
