@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 use std::str::FromStr;
 
@@ -43,14 +43,14 @@ impl From<PpaassAddressType> for u8 {
 }
 
 /// The address
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PpaassAddress {
     host: Vec<u8>,
     port: u16,
     address_type: PpaassAddressType,
 }
 
-impl Display for PpaassAddress {
+impl Debug for PpaassAddress {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let host: String = match self.address_type {
             PpaassAddressType::IpV4 => {
@@ -80,6 +80,12 @@ impl Display for PpaassAddress {
             .field("port", &self.port)
             .field("type", &self.address_type)
             .finish()
+    }
+}
+
+impl Display for PpaassAddress {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 

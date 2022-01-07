@@ -22,10 +22,7 @@ use ppaass_common::proxy::PpaassProxyMessagePayload;
 
 use crate::codec::socks::{Socks5AuthCodec, Socks5ConnectCodec};
 use crate::common::ProxyAddress;
-use crate::config::{
-    AgentConfiguration, DEFAULT_TCP_BUFFER_SIZE, DEFAULT_TCP_MAX_FRAME_SIZE,
-    DEFAULT_UDP_BUFFER_SIZE,
-};
+use crate::config::{DEFAULT_TCP_BUFFER_SIZE, DEFAULT_TCP_MAX_FRAME_SIZE, DEFAULT_UDP_BUFFER_SIZE};
 use crate::error::PpaassAgentError;
 use crate::protocol::socks::{
     Socks5AddrType, Socks5AuthMethod, Socks5AuthResponse, Socks5ConnectRequestType,
