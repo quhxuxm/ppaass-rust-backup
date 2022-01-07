@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -31,6 +31,7 @@ use crate::config::{
     DEFAULT_UDP_BUFFER_SIZE,
 };
 use crate::error::PpaassProxyError;
+use crate::monitor::{TransportMonitor, TransportSnapshot, TransportTrafficType};
 
 type AgentStreamFramed = Framed<TcpStream, PpaassMessageCodec>;
 const LOCAL_ADDRESS: [u8; 4] = [0u8; 4];
@@ -43,19 +44,6 @@ pub(crate) enum TransportStatus {
     Closed,
 }
 
-#[derive(Debug)]
-pub(crate) struct TransportSnapshot {
-    pub id: String,
-    pub status: TransportStatus,
-    pub start_time: u128,
-    pub end_time: Option<u128>,
-    pub user_token: Option<Vec<u8>>,
-    pub agent_remote_address: SocketAddr,
-    pub source_address: Option<PpaassAddress>,
-    pub target_address: Option<PpaassAddress>,
-}
-
-#[derive(Debug)]
 pub(crate) struct Transport {
     id: String,
     status: TransportStatus,
@@ -65,11 +53,11 @@ pub(crate) struct Transport {
     agent_remote_address: SocketAddr,
     source_address: Option<PpaassAddress>,
     target_address: Option<PpaassAddress>,
-    snapshot_sender: Sender<TransportSnapshot>,
     configuration: Arc<ProxyConfiguration>,
+    monitor: Arc<TransportMonitor>,
 }
 
-impl Display for Transport {
+impl Debug for Transport {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Transport")
             .field("id", &self.id)
@@ -84,6 +72,12 @@ impl Display for Transport {
     }
 }
 
+impl Display for Transport {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 struct InitResult {
     agent_stream_framed: AgentStreamFramed,
     target_tcp_stream: Option<TcpStream>,
@@ -93,8 +87,8 @@ struct InitResult {
 impl Transport {
     pub fn new(
         agent_remote_address: SocketAddr,
-        snapshot_sender: Sender<TransportSnapshot>,
         configuration: Arc<ProxyConfiguration>,
+        monitor: Arc<TransportMonitor>,
     ) -> Result<Self> {
         Ok(Self {
             id: generate_uuid(),
@@ -109,15 +103,9 @@ impl Transport {
             agent_remote_address,
             source_address: None,
             target_address: None,
-            snapshot_sender,
             configuration,
+            monitor,
         })
-    }
-
-    async fn publish_transport_snapshot(&self) -> Result<()> {
-        let transport_snapshot = self.take_snapshot();
-        //        self.snapshot_sender.send(transport_snapshot).await?;
-        Ok(())
     }
 
     /// # Run the transport step by step:
@@ -133,7 +121,7 @@ impl Transport {
         rsa_public_key: impl Into<String>,
         rsa_private_key: impl Into<String>,
     ) -> Result<()> {
-        self.publish_transport_snapshot().await?;
+        self.monitor.publish_transport_snapshot(self);
         let ppaass_message_codec = PpaassMessageCodec::new(
             rsa_public_key.into(),
             rsa_private_key.into(),
@@ -279,7 +267,7 @@ impl Transport {
                 self.source_address = Some(agent_message_source_address.clone());
                 self.target_address = Some(agent_message_target_address.clone());
                 self.status = TransportStatus::Initialized;
-                self.publish_transport_snapshot().await?;
+                self.monitor.publish_transport_snapshot(self);
                 Ok(Some(InitResult {
                     agent_stream_framed,
                     target_tcp_stream: Some(target_tcp_stream),
@@ -320,6 +308,7 @@ impl Transport {
                 self.source_address = Some(agent_message_source_address.clone());
                 self.target_address = Some(agent_message_target_address.clone());
                 self.status = TransportStatus::Initialized;
+                self.monitor.publish_transport_snapshot(self);
                 Ok(Some(InitResult {
                     agent_stream_framed,
                     target_tcp_stream: None,
@@ -348,6 +337,8 @@ impl Transport {
             )
             .into());
         }
+        self.status = TransportStatus::Relaying;
+        self.monitor.publish_transport_snapshot(self);
         let transport_id_for_target_to_proxy_relay = self.id.clone();
         let transport_id_for_proxy_to_target_relay = self.id.clone();
         let user_token = self
@@ -362,32 +353,35 @@ impl Transport {
         let target_udp_socket_for_target_to_proxy_relay = target_udp_socket.clone();
         let proxy_to_target_relay = tokio::spawn(async move {
             loop {
-                let agent_udp_data_message = agent_read_part.next().await;
-                if agent_udp_data_message.is_none() {
-                    info!(
-                        "Nothing to read from agent, tcp transport: [{}]",
-                        transport_id_for_proxy_to_target_relay
-                    );
-                    continue;
-                }
-                let agent_udp_data_message = agent_udp_data_message.unwrap();
-                if let Err(e) = agent_udp_data_message {
-                    error!("Fail to decode agent udp message because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
-                    return;
-                }
-                let agent_udp_data_message = agent_udp_data_message.unwrap();
+                let agent_udp_data_message = match agent_read_part.next().await {
+                    None => {
+                        info!(
+                            "Nothing to read from agent, tcp transport: [{}]",
+                            transport_id_for_proxy_to_target_relay
+                        );
+                        continue;
+                    }
+                    Some(agent_udp_data_message) => match agent_udp_data_message {
+                        Err(e) => {
+                            error!("Fail to decode agent udp message because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
+                            return;
+                        }
+                        Ok(r) => r,
+                    },
+                };
                 let PpaassMessageSplitResult {
                     id: agent_message_id,
                     payload: agent_message_payload_bytes,
                     ..
                 } = agent_udp_data_message.split();
-                let agent_message_payload: Result<PpaassAgentMessagePayload, _> =
-                    agent_message_payload_bytes.try_into();
-                if let Err(e) = agent_message_payload {
-                    error!("Fail to decode agent message payload because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
-                    continue;
-                }
-                let agent_message_payload = agent_message_payload.unwrap();
+                let agent_message_payload: PpaassAgentMessagePayload =
+                    match agent_message_payload_bytes.try_into() {
+                        Err(e) => {
+                            error!("Fail to decode agent message payload because of error, transport: [{}], error: {:#?}",transport_id_for_proxy_to_target_relay,  e);
+                            continue;
+                        }
+                        Ok(r) => r,
+                    };
                 let PpaassAgentMessagePayloadSplitResult {
                     payload_type: agent_message_payload_type,
                     data: agent_message_payload_data,
@@ -406,7 +400,6 @@ impl Transport {
                             }
                             Ok(r) => r,
                         };
-
                         if let Err(e) = target_udp_socket_for_proxy_to_target_relay
                             .send_to(
                                 agent_message_payload_data.as_slice(),
@@ -493,53 +486,54 @@ impl Transport {
             .into());
         }
         self.status = TransportStatus::Relaying;
-        self.publish_transport_snapshot().await?;
+        self.monitor.publish_transport_snapshot(self);
         let user_token = self
             .user_token
             .as_ref()
             .context("Fail to unwrap user token")?
             .clone();
-        let user_token_for_target_to_proxy_relay = user_token.clone();
+        let user_token_t2p = user_token.clone();
         let source_address = self
             .source_address
             .clone()
             .take()
             .context("Can not unwrap source edge address")?;
-        let source_address_for_target_to_proxy_relay = source_address.clone();
+        let source_address_t2p = source_address.clone();
         let target_address = self
             .target_address
             .clone()
             .take()
             .context("Can not unwrap target edge address")?;
-        let target_address_for_target_to_proxy_relay = target_address.clone();
-        let target_address_for_proxy_to_target_relay = target_address.clone();
+        let target_address_t2p = target_address.clone();
+        let target_address_p2t = target_address.clone();
         let (mut target_read, mut target_write) = target_tcp_stream.into_split();
         let (mut agent_write_part, mut agent_read_part) = agent_stream_framed.split();
-        let transport_id_for_target_to_proxy_relay = self.id.clone();
-        let transport_id_for_proxy_to_target_relay = self.id.clone();
+        let transport_id_t2p = self.id.clone();
+        let transport_id_p2t = self.id.clone();
+        let monitor_for_t2p = self.monitor.clone();
+        let monitor_for_p2t = self.monitor.clone();
         let proxy_to_target_relay = tokio::spawn(async move {
             loop {
                 info!(
                     "Begin to loop for tcp relay from proxy to target for tcp transport: [{}]",
-                    transport_id_for_proxy_to_target_relay
+                    transport_id_p2t
                 );
                 let agent_tcp_data_message = agent_read_part.next().await;
                 let agent_tcp_data_message = match agent_tcp_data_message {
                     None => {
                         info!(
                             "Nothing to read from agent, tcp transport: [{}], target address: [{}]",
-                            transport_id_for_proxy_to_target_relay,
-                            target_address_for_proxy_to_target_relay
+                            transport_id_p2t, target_address_p2t
                         );
                         return;
                     }
                     Some(result) => match result {
                         Err(e) => {
                             error!("Fail to decode agent tcp message because of error, transport: [{}], target address:[{}]. error: {:#?}",
-                                transport_id_for_proxy_to_target_relay, target_address_for_proxy_to_target_relay, e);
+                                transport_id_p2t, target_address_p2t, e);
                             if let Err(e) = target_write.shutdown().await {
                                 error!("Fail to shutdown target tcp stream because of error, transport: [{}], target address:[{}]. error: {:#?}",
-                                transport_id_for_proxy_to_target_relay, target_address_for_proxy_to_target_relay, e);
+                                transport_id_p2t, target_address_p2t, e);
                             };
                             return;
                         }
@@ -556,10 +550,10 @@ impl Transport {
                 {
                     Err(e) => {
                         error!("Fail to parse agent message payload because of error, transport:[{}], target address: [{}], error: {:#?}",
-                            transport_id_for_proxy_to_target_relay,target_address_for_proxy_to_target_relay,e);
+                            transport_id_p2t,target_address_p2t,e);
                         if let Err(e) = target_write.shutdown().await {
                             error!("Fail to shutdown target tcp stream because of error, transport: [{}], target address:[{}]. error: {:#?}",
-                                transport_id_for_proxy_to_target_relay, target_address_for_proxy_to_target_relay, e);
+                                transport_id_p2t, target_address_p2t, e);
                         };
                         return;
                     }
@@ -570,34 +564,48 @@ impl Transport {
                     payload_type: agent_message_payload_type,
                     ..
                 } = agent_message_payload.split();
+                monitor_for_p2t.publish_transport_traffic(
+                    transport_id_p2t.clone(),
+                    TransportTrafficType::AgentRead,
+                    agent_message_payload_data.len(),
+                );
                 match agent_message_payload_type {
                     PpaassAgentMessagePayloadType::TcpData => {
-                        if let Err(e) = target_write
+                        match target_write
                             .write(agent_message_payload_data.as_slice())
                             .await
                         {
-                            error!("Fail to send agent data from proxy to target because of error, transport:[{}], target address: [{}], error: {:#?}",
-                                    transport_id_for_proxy_to_target_relay, target_address_for_proxy_to_target_relay, e);
-                            return;
+                            Err(e) => {
+                                error!("Fail to send agent data from proxy to target because of error, transport:[{}], target address: [{}], error: {:#?}",
+                                    transport_id_p2t, target_address_p2t, e);
+                                return;
+                            }
+                            Ok(size) => {
+                                monitor_for_p2t.publish_transport_traffic(
+                                    transport_id_p2t.clone(),
+                                    TransportTrafficType::TargetWrite,
+                                    size,
+                                );
+                            }
                         }
+
                         if let Err(e) = target_write.flush().await {
                             error!("Fail to flush agent data from proxy to target because of error, transport:[{}], target address: [{}], error: {:#?}",
-                                transport_id_for_proxy_to_target_relay, target_address_for_proxy_to_target_relay, e);
+                                transport_id_p2t, target_address_p2t, e);
                             return;
                         }
                     }
                     PpaassAgentMessagePayloadType::TcpConnectionClose => {
                         info!(
                             "Close agent connection, transport:[{}], target address: [{}]",
-                            transport_id_for_proxy_to_target_relay,
-                            target_address_for_proxy_to_target_relay
+                            transport_id_p2t, target_address_p2t
                         );
                         return;
                     }
                     payload_type => {
                         error!(
                             "Invalid payload type received, received payload type: [{:?}], transport: [{}], target address: [{}]",
-                            payload_type, transport_id_for_proxy_to_target_relay, target_address_for_proxy_to_target_relay
+                            payload_type, transport_id_p2t, target_address_p2t
                         );
                         return;
                     }
@@ -612,13 +620,13 @@ impl Transport {
             loop {
                 info!(
                     "Begin the loop for tcp relay from target to proxy for tcp transport: [{}], target address: [{}]",
-                    transport_id_for_target_to_proxy_relay, target_address_for_target_to_proxy_relay
+                    transport_id_t2p, target_address_t2p
                 );
                 let mut target_read_buf = Vec::<u8>::with_capacity(target_to_proxy_buffer_size);
                 let read_size = match target_read.read_buf(&mut target_read_buf).await {
                     Err(e) => {
                         error!("Fail to read target data because of error, tcp transport: [{}], target address: [{}], error: {:#?}",
-                            transport_id_for_target_to_proxy_relay, target_address_for_target_to_proxy_relay, e);
+                            transport_id_t2p, target_address_t2p, e);
                         return;
                     }
                     Ok(size) => size,
@@ -626,68 +634,77 @@ impl Transport {
                 if read_size == 0 && target_read_buf.remaining_mut() > 0 {
                     info!(
                         "Nothing to read from target, tcp transport: [{}], target address: [{}]",
-                        transport_id_for_target_to_proxy_relay,
-                        target_address_for_target_to_proxy_relay
+                        transport_id_t2p, target_address_t2p
                     );
                     let tcp_connection_close_message_payload = PpaassProxyMessagePayload::new(
-                        source_address_for_target_to_proxy_relay.clone(),
-                        target_address_for_target_to_proxy_relay.clone(),
+                        source_address_t2p.clone(),
+                        target_address_t2p.clone(),
                         PpaassProxyMessagePayloadType::TcpConnectionClose,
                         target_read_buf,
                     );
                     let tcp_connection_close_message =
                         PpaassMessage::new_with_random_encryption_type(
                             "".to_string(),
-                            user_token_for_target_to_proxy_relay.clone(),
+                            user_token_t2p.clone(),
                             generate_uuid().as_bytes().to_vec(),
                             tcp_connection_close_message_payload.into(),
                         );
                     if let Err(e) = agent_write_part.send(tcp_connection_close_message).await {
                         error!("Fail to send connection close from proxy to client because of error, tcp transport: [{}], target address: [{}], error: {:#?}",
-                            transport_id_for_target_to_proxy_relay, target_address_for_target_to_proxy_relay, e);
+                            transport_id_t2p, target_address_t2p, e);
                         return;
                     };
                     if let Err(e) = agent_write_part.flush().await {
                         error!("Fail to flush connection close from proxy to client because of error, tcp transport: [{}], target address: [{}], error: {:#?}",
-                            transport_id_for_target_to_proxy_relay,target_address_for_target_to_proxy_relay, e);
+                            transport_id_t2p,target_address_t2p, e);
                         return;
                     };
                     return;
                 }
+                monitor_for_t2p.publish_transport_traffic(
+                    transport_id_t2p.clone(),
+                    TransportTrafficType::TargetRead,
+                    read_size,
+                );
                 info!(
                     "Receive target data for tcp transport: [{}], target address: [{}], data size: [{}]",
-                    transport_id_for_target_to_proxy_relay,
-                    target_address_for_target_to_proxy_relay,
+                    transport_id_t2p,
+                    target_address_t2p,
                     read_size
                 );
                 debug!(
                     "Receive target data for tcp transport: [{}], target address: [{}], data:\n{}\n",
-                    transport_id_for_target_to_proxy_relay,
-                    target_address_for_target_to_proxy_relay,
+                    transport_id_t2p,
+                    target_address_t2p,
                     String::from_utf8(target_read_buf.clone())
                         .unwrap_or_else(|e| format!("{:#?}", e))
                 );
                 let tcp_data_success_message_payload = PpaassProxyMessagePayload::new(
-                    source_address_for_target_to_proxy_relay.clone(),
-                    target_address_for_target_to_proxy_relay.clone(),
+                    source_address_t2p.clone(),
+                    target_address_t2p.clone(),
                     PpaassProxyMessagePayloadType::TcpData,
                     target_read_buf,
                 );
                 let tcp_data_success_message = PpaassMessage::new_with_random_encryption_type(
                     "".to_string(),
-                    user_token_for_target_to_proxy_relay.clone(),
+                    user_token_t2p.clone(),
                     generate_uuid().as_bytes().to_vec(),
                     tcp_data_success_message_payload.into(),
                 );
                 if let Err(e) = agent_write_part.send(tcp_data_success_message).await {
                     error!("Fail to send target data from proxy to client because of error, tcp transport: [{}], target address: [{}], error: {:#?}",
-                                transport_id_for_target_to_proxy_relay,  target_address_for_target_to_proxy_relay, e);
+                                transport_id_t2p,  target_address_t2p, e);
                     return;
                 };
+                monitor_for_t2p.publish_transport_traffic(
+                    transport_id_t2p.clone(),
+                    TransportTrafficType::TargetWrite,
+                    read_size,
+                );
                 if let Err(e) = agent_write_part.flush().await {
                     error!(
                         "Fail to flush target data from proxy to client because of error, tcp transport: [{}], target address: [{}], error: {:#?}",
-                        transport_id_for_target_to_proxy_relay, target_address_for_target_to_proxy_relay,e
+                        transport_id_t2p, target_address_t2p,e
                     );
                     return;
                 };
@@ -695,7 +712,6 @@ impl Transport {
         });
         target_to_proxy_relay.await?;
         proxy_to_target_relay.await?;
-        self.publish_transport_snapshot().await?;
         Ok(())
     }
 
@@ -708,23 +724,33 @@ impl Transport {
             )
         };
         self.status = TransportStatus::Closed;
-        self.publish_transport_snapshot().await?;
+        self.monitor.publish_transport_snapshot(&self);
         Ok(())
     }
 
-    pub fn take_snapshot(&self) -> TransportSnapshot {
-        TransportSnapshot {
-            id: self.id.clone(),
-            user_token: self.user_token.clone(),
-            status: self.status,
-            agent_remote_address: self.agent_remote_address,
-            source_address: self.source_address.clone(),
-            target_address: self.target_address.clone(),
-            start_time: self.start_time,
-            end_time: self.end_time,
-        }
-    }
     pub fn id(&self) -> &str {
         &self.id
+    }
+
+    pub fn status(&self) -> TransportStatus {
+        self.status
+    }
+    pub fn start_time(&self) -> u128 {
+        self.start_time
+    }
+    pub fn end_time(&self) -> Option<u128> {
+        self.end_time
+    }
+    pub fn user_token(&self) -> &Option<Vec<u8>> {
+        &self.user_token
+    }
+    pub fn agent_remote_address(&self) -> SocketAddr {
+        self.agent_remote_address
+    }
+    pub fn source_address(&self) -> &Option<PpaassAddress> {
+        &self.source_address
+    }
+    pub fn target_address(&self) -> &Option<PpaassAddress> {
+        &self.target_address
     }
 }
