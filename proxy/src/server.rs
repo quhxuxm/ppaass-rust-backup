@@ -9,10 +9,11 @@ use anyhow::{Context, Result};
 use log::{error, info};
 use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
-use tokio::sync::broadcast::Sender;
 
 use crate::config::ProxyConfiguration;
-use crate::monitor::{TransportMonitor, TransportSnapshot, TransportTraffic};
+use crate::monitor::aggregator::TransportInfoAggregator;
+use crate::monitor::collector::TransportInfoCollector;
+use crate::monitor::data::{TransportSnapshot, TransportTraffic};
 use crate::transport::{Transport, TransportStatus};
 
 const CONFIG_FILE_PATH: &str = "ppaass-proxy.toml";
@@ -23,6 +24,7 @@ const PROXY_PRIVATE_KEY_PATH: &str = "ProxyPrivateKey.pem";
 
 pub struct Server {
     master_runtime: Runtime,
+    monitor_runtime: Arc<Runtime>,
     worker_runtime: Arc<Runtime>,
     configuration: Arc<ProxyConfiguration>,
 }
@@ -83,8 +85,22 @@ impl Server {
         ));
         worker_runtime_builder.enable_all();
         let worker_runtime = worker_runtime_builder.build()?;
+
+        let mut monitor_runtime_builder = tokio::runtime::Builder::new_multi_thread();
+        monitor_runtime_builder
+            .worker_threads(proxy_server_config.monitor_thread_number().unwrap_or(1));
+
+        monitor_runtime_builder.thread_name("proxy-monitor");
+        monitor_runtime_builder.thread_keep_alive(Duration::from_secs(
+            proxy_server_config
+                .thread_timeout()
+                .with_context(|| "Can not get thread time out from proxy configuration.")?,
+        ));
+        monitor_runtime_builder.enable_all();
+        let monitor_runtime = monitor_runtime_builder.build()?;
         Ok(Self {
             master_runtime,
+            monitor_runtime: Arc::new(monitor_runtime),
             worker_runtime: Arc::new(worker_runtime),
             configuration: Arc::new(proxy_server_config),
         })
@@ -97,7 +113,20 @@ impl Server {
             .expect("Fail to read proxy private key.");
         let proxy_server_config = self.configuration.clone();
         let worker_runtime = self.worker_runtime.clone();
-
+        let (transport_snapshot_sender, transport_snapshot_receiver) =
+            tokio::sync::mpsc::channel::<TransportSnapshot>(1024);
+        let (transport_traffic_sender, transport_traffic_receiver) =
+            tokio::sync::mpsc::channel::<TransportTraffic>(1024);
+        let info_collector = Arc::new(TransportInfoCollector::new(
+            transport_snapshot_sender,
+            transport_traffic_sender,
+        ));
+        let info_aggregator = TransportInfoAggregator::new(
+            transport_snapshot_receiver,
+            transport_traffic_receiver,
+            self.monitor_runtime.clone(),
+        );
+        info_aggregator.start();
         self.master_runtime.block_on(async move {
             let local_port = proxy_server_config.port().unwrap();
             let local_ip = IpAddr::from(LOCAL_ADDRESS);
@@ -106,7 +135,7 @@ impl Server {
             //Start to processing client protocol
             info!("Success to bind TCP server on port: [{}]", local_port);
             loop {
-                let (agent_stream, agent_remote_addr)  =match  tcp_listener.accept().await{
+                let (agent_stream, agent_remote_address)  =match  tcp_listener.accept().await{
                     Err(e)=>{
                         error!("Fail to accept agent protocol because of error: {:#?}", e);
                         continue;
@@ -118,17 +147,13 @@ impl Server {
                         r
                     }
                 };
-                let (transport_snapshot_sender, transport_snapshot_receiver) =
-                    tokio::sync::broadcast::channel::<TransportSnapshot>(1024);
-                let (transport_traffic_sender, transport_traffic_receiver) =
-                    tokio::sync::broadcast::channel::<TransportTraffic>(1024);
-                let monitor = Arc::new(TransportMonitor::new(transport_snapshot_sender, transport_traffic_sender));
+                let info_collector = info_collector.clone();
                 let agent_public_key = agent_public_key.clone();
                 let proxy_private_key = proxy_private_key.clone();
                 let proxy_server_config = proxy_server_config.clone();
                 worker_runtime.spawn(async move {
-                    let mut transport = match Transport::new(agent_remote_addr,
-                        proxy_server_config, monitor.clone()){
+                    let mut transport = match Transport::new(agent_remote_address,
+                        proxy_server_config, info_collector.clone()){
                         Err(e)=>{
                             error!("Fail to create agent tcp transport because of error, error: {:#?}",e );
                             return;
@@ -136,14 +161,14 @@ impl Server {
                         Ok(r)=>r
                     };
                     let transport_id = transport.id().to_string();
-                    info!("Receive a agent stream from: [{}], assign it to transport: [{}].", agent_remote_addr, transport_id);
+                    info!("Receive a agent stream from: [{}], assign it to transport: [{}].", agent_remote_address, transport_id);
                     if let Err(e) = transport.start(agent_stream, agent_public_key, proxy_private_key).await {
                         error!("Fail to start agent tcp transport because of error, transport:[{}], agent address:[{}], error: {:#?}",transport_id,
-                            agent_remote_addr,e);
+                            agent_remote_address,e);
                     }
                     if let Err(e) = transport.close().await {
                         error!("Fail to close agent tcp transport because of error, transport:[{}], agent address:[{}], error: {:#?}",transport_id,
-                            agent_remote_addr,e);
+                            agent_remote_address,e);
                     }
                     info!("Graceful close agent tcp transport: [{}]", transport_id);
                 });

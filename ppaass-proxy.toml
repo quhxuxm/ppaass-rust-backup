@@ -4,6 +4,7 @@ buffer_size = 1048576
 max_frame_size = 2097152
 master_thread_number = 32
 worker_thread_number = 512
+monitor_thread_number=8
 max_blocking_threads = 32
 thread_timeout = 5
 target_connect_timeout = 20

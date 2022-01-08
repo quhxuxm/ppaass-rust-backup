@@ -55,20 +55,26 @@ impl Debug for PpaassAddress {
         let host: String = match self.address_type {
             PpaassAddressType::IpV4 => {
                 let mut result = String::new();
-                (0..4).for_each(|index| {
-                    result.push_str(self.host[index].to_string().as_str());
+                let host = self.host.clone();
+                for i in host {
+                    result.push_str(i.to_string().as_str());
                     result.push('.');
-                });
-                result.remove(result.len() - 1);
+                }
+                if !result.is_empty() {
+                    result.remove(result.len() - 1);
+                }
                 result
             }
             PpaassAddressType::IpV6 => {
                 let mut result = String::new();
-                (0..16).for_each(|index| {
-                    result.push_str(self.host[index].to_string().as_str());
+                let host = self.host.clone();
+                for i in host {
+                    result.push_str(i.to_string().as_str());
                     result.push(':');
-                });
-                result.remove(result.len() - 1);
+                }
+                if !result.is_empty() {
+                    result.remove(result.len() - 1);
+                }
                 result
             }
             PpaassAddressType::Domain => {
