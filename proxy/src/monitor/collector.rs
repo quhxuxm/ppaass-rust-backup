@@ -1,4 +1,5 @@
 use log::error;
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::Sender;
 
 use crate::monitor::data::{TransportSnapshot, TransportTraffic, TransportTrafficType};
@@ -22,11 +23,21 @@ impl TransportInfoCollector {
 
     pub async fn publish_transport_snapshot(&self, transport: &Transport) {
         let snapshot = TransportSnapshot::take_snapshot(transport);
-        if let Err(e) = self.transport_snapshot_sender.send(snapshot).await {
-            error!(
-                "Fail to send transport snapshot to monitor because of error: {:#?}",
-                e
-            );
+        if let Err(e) = self.transport_snapshot_sender.try_send(snapshot) {
+            match e {
+                TrySendError::Full(traffic) => {
+                    error!(
+                        "Fail to send transport snapshot to monitor because of channel is full, current traffic: {:#?}",
+                        traffic
+                    );
+                }
+                TrySendError::Closed(traffic) => {
+                    error!(
+                        "Fail to send transport snapshot to monitor because of channel is closed, current traffic: {:#?}",
+                        traffic
+                    );
+                }
+            }
         }
     }
 
@@ -37,11 +48,21 @@ impl TransportInfoCollector {
         bytes: usize,
     ) {
         let traffic = TransportTraffic::new(transport_id, traffic_type, bytes);
-        if let Err(e) = self.transport_traffic_sender.send(traffic).await {
-            error!(
-                "Fail to send transport traffic to monitor because of error: {:#?}",
-                e
-            );
+        if let Err(e) = self.transport_traffic_sender.try_send(traffic) {
+            match e {
+                TrySendError::Full(traffic) => {
+                    error!(
+                        "Fail to send transport traffic to monitor because of channel is full, current traffic: {:#?}",
+                        traffic
+                    );
+                }
+                TrySendError::Closed(traffic) => {
+                    error!(
+                        "Fail to send transport traffic to monitor because of channel is closed, current traffic: {:#?}",
+                        traffic
+                    );
+                }
+            }
         }
     }
 }
