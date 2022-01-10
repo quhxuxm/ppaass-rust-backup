@@ -121,12 +121,11 @@ impl Server {
             transport_snapshot_sender,
             transport_traffic_sender,
         ));
-        let info_aggregator = TransportInfoAggregator::new(
-            transport_snapshot_receiver,
-            transport_traffic_receiver,
-            self.monitor_runtime.clone(),
-        );
-        info_aggregator.start();
+        let info_aggregator =
+            TransportInfoAggregator::new(transport_snapshot_receiver, transport_traffic_receiver);
+        self.monitor_runtime.spawn(async move {
+            info_aggregator.start().await;
+        });
         self.master_runtime.block_on(async move {
             let local_port = proxy_server_config.port().unwrap();
             let local_ip = IpAddr::from(LOCAL_ADDRESS);

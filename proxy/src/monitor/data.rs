@@ -1,6 +1,8 @@
 use ppaass_common::common::{PpaassAddress, PpaassAddressType};
+
 use crate::transport::{Transport, TransportStatus};
-#[derive(Debug, Clone)]
+
+#[derive(Hash, Debug, Clone, Eq, PartialEq)]
 pub(crate) enum TransportTrafficType {
     AgentRead,
     AgentWrite,

@@ -360,10 +360,14 @@ impl HttpTransport {
         let user_token = self.meta_info.user_token.clone();
         let (mut client_tcp_stream_read, mut client_tcp_stream_write) =
             client_tcp_stream.into_split();
-        let transport_id_for_proxy_to_client_relay = self.meta_info.id.clone();
-        let transport_id_for_client_to_proxy_relay = self.meta_info.id.clone();
-        let connect_message_id_for_client_to_proxy_relay = connect_message_id.clone();
-        let connect_message_id_for_proxy_to_client_relay = connect_message_id.clone();
+        let transport_id_p2c = self.meta_info.id.clone();
+        let transport_id_c2p = self.meta_info.id.clone();
+        let connect_message_id_c2p = connect_message_id.clone();
+        let connect_message_id_p2c = connect_message_id.clone();
+        let (
+            client_connection_closed_notifier_sender,
+            mut client_connection_closed_notifier_receiver,
+        ) = tokio::sync::mpsc::channel::<bool>(1);
         let client_to_proxy_relay = tokio::spawn(async move {
             if let Some(message) = http_init_message {
                 let init_data_message_body = PpaassAgentMessagePayload::new(
@@ -396,6 +400,31 @@ impl HttpTransport {
                             "Fail to read data from agent client because of error, error: {:#?}",
                             e
                         );
+                        if let Err(e) = client_connection_closed_notifier_sender.send(true).await
+                        {
+                            error!("Fail to send client connection closed notification because of error, socks 5 transport: [{}], error: {:#?}", transport_id_c2p, e)
+                        };
+                        let connection_close_message_body = PpaassAgentMessagePayload::new(
+                            source_address.clone(),
+                            target_address.clone(),
+                            PpaassAgentMessagePayloadType::TcpConnectionClose,
+                            vec![],
+                        );
+                        let connection_close_message = PpaassMessage::new(
+                            connect_message_id_c2p.clone(),
+                            user_token.clone(),
+                            generate_uuid().into_bytes(),
+                            PpaassMessagePayloadEncryptionType::random(),
+                            connection_close_message_body.into(),
+                        );
+                        if let Err(e) = proxy_framed_write.send(connection_close_message).await {
+                            error!("Fail to send connection close from agent to proxy because of error, error: {:#?}", e);
+                            break;
+                        }
+                        if let Err(e) = proxy_framed_write.flush().await {
+                            error!("Fail to flush connection close from agent to proxy because of error, error: {:#?}", e);
+                            break;
+                        }
                         return;
                     }
                     Ok(r) => r,
@@ -408,7 +437,7 @@ impl HttpTransport {
                         read_buf,
                     );
                     let connection_close_message = PpaassMessage::new(
-                        connect_message_id_for_client_to_proxy_relay.clone(),
+                        connect_message_id_c2p.clone(),
                         user_token.clone(),
                         generate_uuid().into_bytes(),
                         PpaassMessagePayloadEncryptionType::random(),
@@ -431,7 +460,7 @@ impl HttpTransport {
                     read_buf,
                 );
                 let data_message = PpaassMessage::new(
-                    connect_message_id_for_client_to_proxy_relay.clone(),
+                    connect_message_id_c2p.clone(),
                     user_token.clone(),
                     generate_uuid().into_bytes(),
                     PpaassMessagePayloadEncryptionType::random(),
@@ -457,13 +486,20 @@ impl HttpTransport {
             loop {
                 debug!(
                     "Begin the loop to read from proxy for http transport: [{}]",
-                    transport_id_for_proxy_to_client_relay
+                    transport_id_p2c
                 );
+                if let Ok(true) = client_connection_closed_notifier_receiver.try_recv() {
+                    error!(
+                        "Client connection closed, http transport:[{}]",
+                        transport_id_p2c
+                    );
+                    return;
+                }
                 let proxy_message = match proxy_framed_read.next().await {
                     None => {
                         info!(
                             "Noting read from proxy for http transport: [{}]",
-                            transport_id_for_proxy_to_client_relay
+                            transport_id_p2c
                         );
                         return;
                     }
@@ -471,7 +507,7 @@ impl HttpTransport {
                 };
                 let proxy_message = match proxy_message {
                     Err(e) => {
-                        error!("Fail to read data from proxy because of error, http transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
+                        error!("Fail to read data from proxy because of error, http transport:[{}], error: {:#?}",transport_id_p2c, e);
                         return;
                     }
                     Ok(r) => r,
@@ -480,7 +516,7 @@ impl HttpTransport {
                 let payload: Result<PpaassProxyMessagePayload, _> = payload.try_into();
                 let payload = match payload {
                     Err(e) => {
-                        error!("Fail to read data from proxy because of error, http transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
+                        error!("Fail to read data from proxy because of error, http transport:[{}], error: {:#?}",transport_id_p2c, e);
                         return;
                     }
                     Ok(r) => r,
@@ -492,33 +528,33 @@ impl HttpTransport {
                 } = payload.split();
                 match proxy_message_payload_type {
                     PpaassProxyMessagePayloadType::TcpDataRelayFail => {
-                        error!("Fail to read data from proxy because of proxy give data relay fail, http transport: [{}]", transport_id_for_proxy_to_client_relay);
+                        error!("Fail to read data from proxy because of proxy give data relay fail, http transport: [{}]", transport_id_p2c);
                         continue;
                     }
                     PpaassProxyMessagePayloadType::TcpData => {
                         debug!(
                             "Receive target data for http transport: [{}]\n{}\n",
-                            transport_id_for_proxy_to_client_relay,
+                            transport_id_p2c,
                             String::from_utf8_lossy(&proxy_message_data)
                         );
                         if let Err(e) = client_tcp_stream_write.write(&proxy_message_data).await {
-                            error!("Fail to send data from agent to client because of error, http transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
+                            error!("Fail to send data from agent to client because of error, http transport:[{}], error: {:#?}",transport_id_p2c, e);
                             return;
                         }
                         if let Err(e) = client_tcp_stream_write.flush().await {
-                            error!("Fail to flush data from agent to client because of error, http transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
+                            error!("Fail to flush data from agent to client because of error, http transport:[{}], error: {:#?}",transport_id_p2c, e);
                             return;
                         }
                     }
                     PpaassProxyMessagePayloadType::TcpConnectionClose => {
                         info!(
                             "Http transport:[{}] close",
-                            transport_id_for_proxy_to_client_relay
+                            transport_id_p2c
                         );
                         return;
                     }
                     other_payload_type => {
-                        error!("Fail to read data from proxy because of proxy give invalid type: {:?}, http transport:[{}]", other_payload_type, transport_id_for_proxy_to_client_relay);
+                        error!("Fail to read data from proxy because of proxy give invalid type: {:?}, http transport:[{}]", other_payload_type, transport_id_p2c);
                         continue;
                     }
                 }

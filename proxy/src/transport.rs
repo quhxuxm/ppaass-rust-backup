@@ -511,6 +511,10 @@ impl Transport {
         let transport_id_p2t = self.id.clone();
         let monitor_for_t2p = self.info_collector.clone();
         let monitor_for_p2t = self.info_collector.clone();
+        let (
+            agent_connection_closed_notifier_sender,
+            mut agent_connection_closed_notifier_receiver,
+        ) = tokio::sync::mpsc::channel::<bool>(1);
         let proxy_to_target_relay = tokio::spawn(async move {
             loop {
                 info!(
@@ -533,6 +537,10 @@ impl Transport {
                             if let Err(e) = target_write.shutdown().await {
                                 error!("Fail to shutdown target tcp stream because of error, transport: [{}], target address:[{}]. error: {:#?}",
                                 transport_id_p2t, target_address_p2t, e);
+                            };
+                            if let Err(e) = agent_connection_closed_notifier_sender.send(true).await
+                            {
+                                error!("Fail to send agent connection closed notification because of error, transport: [{}], error: {:#?}", transport_id_p2t, e)
                             };
                             return;
                         }
@@ -563,11 +571,13 @@ impl Transport {
                     payload_type: agent_message_payload_type,
                     ..
                 } = agent_message_payload.split();
-                monitor_for_p2t.publish_transport_traffic(
-                    transport_id_p2t.clone(),
-                    TransportTrafficType::AgentRead,
-                    agent_message_payload_data.len(),
-                ).await;
+                monitor_for_p2t
+                    .publish_transport_traffic(
+                        transport_id_p2t.clone(),
+                        TransportTrafficType::AgentRead,
+                        agent_message_payload_data.len(),
+                    )
+                    .await;
                 match agent_message_payload_type {
                     PpaassAgentMessagePayloadType::TcpData => {
                         match target_write
@@ -580,11 +590,13 @@ impl Transport {
                                 return;
                             }
                             Ok(size) => {
-                                monitor_for_p2t.publish_transport_traffic(
-                                    transport_id_p2t.clone(),
-                                    TransportTrafficType::TargetWrite,
-                                    size,
-                                ).await;
+                                monitor_for_p2t
+                                    .publish_transport_traffic(
+                                        transport_id_p2t.clone(),
+                                        TransportTrafficType::TargetWrite,
+                                        size,
+                                    )
+                                    .await;
                             }
                         }
 
@@ -599,6 +611,7 @@ impl Transport {
                             "Close agent connection, transport:[{}], target address: [{}]",
                             transport_id_p2t, target_address_p2t
                         );
+                        agent_connection_closed_notifier_sender.send(true).await;
                         return;
                     }
                     payload_type => {
@@ -621,6 +634,10 @@ impl Transport {
                     "Begin the loop for tcp relay from target to proxy for tcp transport: [{}], target address: [{}]",
                     transport_id_t2p, target_address_t2p
                 );
+                if let Ok(true) = agent_connection_closed_notifier_receiver.try_recv() {
+                    error!("Agent connection closed, transport:[{}]", transport_id_t2p);
+                    return;
+                }
                 let mut target_read_buf = Vec::<u8>::with_capacity(target_to_proxy_buffer_size);
                 let read_size = match target_read.read_buf(&mut target_read_buf).await {
                     Err(e) => {
@@ -660,11 +677,13 @@ impl Transport {
                     };
                     return;
                 }
-                monitor_for_t2p.publish_transport_traffic(
-                    transport_id_t2p.clone(),
-                    TransportTrafficType::TargetRead,
-                    read_size,
-                ).await;
+                monitor_for_t2p
+                    .publish_transport_traffic(
+                        transport_id_t2p.clone(),
+                        TransportTrafficType::TargetRead,
+                        read_size,
+                    )
+                    .await;
                 info!(
                     "Receive target data for tcp transport: [{}], target address: [{}], data size: [{}]",
                     transport_id_t2p,
@@ -695,11 +714,13 @@ impl Transport {
                                 transport_id_t2p,  target_address_t2p, e);
                     return;
                 };
-                monitor_for_t2p.publish_transport_traffic(
-                    transport_id_t2p.clone(),
-                    TransportTrafficType::TargetWrite,
-                    read_size,
-                ).await;
+                monitor_for_t2p
+                    .publish_transport_traffic(
+                        transport_id_t2p.clone(),
+                        TransportTrafficType::AgentWrite,
+                        read_size,
+                    )
+                    .await;
                 if let Err(e) = agent_write_part.flush().await {
                     error!(
                         "Fail to flush target data from proxy to client because of error, tcp transport: [{}], target address: [{}], error: {:#?}",

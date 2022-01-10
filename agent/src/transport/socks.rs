@@ -1,3 +1,4 @@
+use std::io::ErrorKind;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -757,10 +758,14 @@ impl Socks5Transport {
             .take()
             .context("Fail to unwrap client tcp stream")?
             .into_split();
-        let transport_id_for_proxy_to_client_relay = self.meta_info.id.clone();
-        let transport_id_for_client_to_proxy_relay = self.meta_info.id.clone();
-        let connect_message_id_for_client_to_proxy_relay = connect_message_id.clone();
-        let connect_message_id_for_proxy_to_client_relay = connect_message_id.clone();
+        let transport_id_p2c = self.meta_info.id.clone();
+        let transport_id_c2p = self.meta_info.id.clone();
+        let connect_message_id_c2p = connect_message_id.clone();
+        let connect_message_id_p2c = connect_message_id.clone();
+        let (
+            client_connection_closed_notifier_sender,
+            mut client_connection_closed_notifier_receiver,
+        ) = tokio::sync::mpsc::channel::<bool>(1);
         let client_to_proxy_relay = tokio::spawn(async move {
             loop {
                 let mut read_buf = Vec::<u8>::with_capacity(DEFAULT_TCP_BUFFER_SIZE);
@@ -770,6 +775,31 @@ impl Socks5Transport {
                             "Fail to read data from agent client because of error, error: {:#?}",
                             e
                         );
+                        if let Err(e) = client_connection_closed_notifier_sender.send(true).await
+                        {
+                            error!("Fail to send client connection closed notification because of error, socks 5 transport: [{}], error: {:#?}", transport_id_c2p, e)
+                        };
+                        let connection_close_message_body = PpaassAgentMessagePayload::new(
+                            source_address.clone(),
+                            target_address.clone(),
+                            PpaassAgentMessagePayloadType::TcpConnectionClose,
+                            vec![],
+                        );
+                        let connection_close_message = PpaassMessage::new(
+                            connect_message_id_c2p.clone(),
+                            user_token.clone(),
+                            generate_uuid().into_bytes(),
+                            PpaassMessagePayloadEncryptionType::random(),
+                            connection_close_message_body.into(),
+                        );
+                        if let Err(e) = proxy_framed_write.send(connection_close_message).await {
+                            error!("Fail to send connection close from agent to proxy because of error, error: {:#?}", e);
+                            break;
+                        }
+                        if let Err(e) = proxy_framed_write.flush().await {
+                            error!("Fail to flush connection close from agent to proxy because of error, error: {:#?}", e);
+                            break;
+                        }
                         return;
                     }
                     Ok(r) => r,
@@ -782,7 +812,7 @@ impl Socks5Transport {
                         read_buf,
                     );
                     let connection_close_message = PpaassMessage::new(
-                        connect_message_id_for_client_to_proxy_relay.clone(),
+                        connect_message_id_c2p.clone(),
                         user_token.clone(),
                         generate_uuid().into_bytes(),
                         PpaassMessagePayloadEncryptionType::random(),
@@ -805,7 +835,7 @@ impl Socks5Transport {
                     read_buf,
                 );
                 let data_message = PpaassMessage::new(
-                    connect_message_id_for_client_to_proxy_relay.clone(),
+                    connect_message_id_c2p.clone(),
                     user_token.clone(),
                     generate_uuid().into_bytes(),
                     PpaassMessagePayloadEncryptionType::random(),
@@ -831,13 +861,20 @@ impl Socks5Transport {
             loop {
                 debug!(
                     "Begin the loop to read from proxy for socks 5 transport: [{}]",
-                    transport_id_for_proxy_to_client_relay
+                    transport_id_p2c
                 );
+                if let Ok(true) = client_connection_closed_notifier_receiver.try_recv() {
+                    error!(
+                        "Client connection closed, socks5 transport:[{}]",
+                        transport_id_p2c
+                    );
+                    return;
+                }
                 let proxy_message = match proxy_framed_read.next().await {
                     None => {
                         info!(
                             "Noting read from proxy for socks 5 transport: [{}]",
-                            transport_id_for_proxy_to_client_relay
+                            transport_id_p2c
                         );
                         return;
                     }
@@ -845,7 +882,7 @@ impl Socks5Transport {
                 };
                 let proxy_message = match proxy_message {
                     Err(e) => {
-                        error!("Fail to read data from proxy because of error, socks 5 transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
+                        error!("Fail to read data from proxy because of error, socks 5 transport:[{}], error: {:#?}",transport_id_p2c, e);
                         return;
                     }
                     Ok(r) => r,
@@ -854,7 +891,7 @@ impl Socks5Transport {
                 let payload: Result<PpaassProxyMessagePayload, _> = payload.try_into();
                 let payload = match payload {
                     Err(e) => {
-                        error!("Fail to read data from proxy because of error, socks 5 transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
+                        error!("Fail to read data from proxy because of error, socks 5 transport:[{}], error: {:#?}",transport_id_p2c, e);
                         return;
                     }
                     Ok(r) => r,
@@ -866,33 +903,33 @@ impl Socks5Transport {
                 } = payload.split();
                 match proxy_message_payload_type {
                     PpaassProxyMessagePayloadType::TcpDataRelayFail => {
-                        error!("Fail to read data from proxy because of proxy give data relay fail, socks 5 transport: [{}]", transport_id_for_proxy_to_client_relay);
+                        error!("Fail to read data from proxy because of proxy give data relay fail, socks 5 transport: [{}]", transport_id_p2c);
                         continue;
                     }
                     PpaassProxyMessagePayloadType::TcpData => {
                         debug!(
                             "Receive target data for http transport: [{}]\n{}\n",
-                            transport_id_for_proxy_to_client_relay,
+                            transport_id_p2c,
                             String::from_utf8_lossy(&proxy_message_data)
                         );
                         if let Err(e) = client_tcp_stream_write.write(&proxy_message_data).await {
-                            error!("Fail to send data from agent to client because of error, socks 5 transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
+                            error!("Fail to send data from agent to client because of error, socks 5 transport:[{}], error: {:#?}",transport_id_p2c, e);
                             return;
                         }
                         if let Err(e) = client_tcp_stream_write.flush().await {
-                            error!("Fail to flush data from agent to client because of error, socks 5 transport:[{}], error: {:#?}",transport_id_for_proxy_to_client_relay, e);
+                            error!("Fail to flush data from agent to client because of error, socks 5 transport:[{}], error: {:#?}",transport_id_p2c, e);
                             return;
                         }
                     }
                     PpaassProxyMessagePayloadType::TcpConnectionClose => {
                         info!(
                             "Socks 5 transport:[{}] close",
-                            transport_id_for_proxy_to_client_relay
+                            transport_id_p2c
                         );
                         return;
                     }
                     other_payload_type => {
-                        error!("Fail to read data from proxy because of proxy give invalid type: {:?}, socks 5 transport:[{}]", other_payload_type, transport_id_for_proxy_to_client_relay);
+                        error!("Fail to read data from proxy because of proxy give invalid type: {:?}, socks 5 transport:[{}]", other_payload_type, transport_id_p2c);
                         continue;
                     }
                 }
