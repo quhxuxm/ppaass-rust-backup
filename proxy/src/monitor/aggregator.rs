@@ -10,8 +10,8 @@ use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::Receiver;
 
 use ppaass_common::common::PpaassAddress;
-use crate::config::ProxyConfiguration;
 
+use crate::config::ProxyConfiguration;
 use crate::monitor::data::{TransportSnapshot, TransportTraffic, TransportTrafficType};
 use crate::transport::TransportStatus;
 
@@ -45,7 +45,7 @@ impl TransportInfoAggregator {
             transport_snapshot_receiver,
             transport_traffic_receiver,
             transport_infos: HashMap::new(),
-            configuration
+            configuration,
         }
     }
 
@@ -59,15 +59,10 @@ impl TransportInfoAggregator {
         loop {
             loop {
                 match transport_snapshot_receiver.try_recv() {
-                    Err(e) => match e {
-                        TryRecvError::Empty => {
-                            debug!("Nothing received for transport snapshot.");
-                            break;
-                        }
-                        TryRecvError::Disconnected => {
-                            debug!("Transport snapshot channel disconnected.")
-                        }
-                    },
+                    Err(TryRecvError::Empty) => {
+                        debug!("Nothing received for transport snapshot.");
+                        break;
+                    }
                     Ok(transport_snapshot) => {
                         self.transport_infos
                             .entry(transport_snapshot.id.clone())
@@ -87,19 +82,17 @@ impl TransportInfoAggregator {
                                 traffic: HashMap::new(),
                             });
                     }
+                    _ => {
+                        debug!("Transport snapshot channel disconnected.")
+                    }
                 }
             }
             loop {
                 match transport_traffic_receiver.try_recv() {
-                    Err(e) => match e {
-                        TryRecvError::Empty => {
-                            debug!("Nothing received for transport traffic.");
-                            break;
-                        }
-                        TryRecvError::Disconnected => {
-                            debug!("Transport traffic channel disconnected.")
-                        }
-                    },
+                    Err(TryRecvError::Empty) => {
+                        debug!("Nothing received for transport traffic.");
+                        break;
+                    }
                     Ok(transport_traffic) => {
                         self.transport_infos
                             .entry(transport_traffic.transport_id.clone())
@@ -112,6 +105,9 @@ impl TransportInfoAggregator {
                                     })
                                     .or_insert(transport_traffic.bytes);
                             });
+                    }
+                    _ => {
+                        debug!("Transport traffic channel disconnected.")
                     }
                 }
             }
