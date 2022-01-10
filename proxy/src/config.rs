@@ -20,6 +20,7 @@ pub(crate) struct ProxyConfiguration {
     target_connection_max_idle: Option<u64>,
     log_config: Option<String>,
     compress: Option<bool>,
+    enable_monitor: Option<bool>
 }
 
 impl ProxyConfiguration {
@@ -69,5 +70,8 @@ impl ProxyConfiguration {
     }
     pub fn compress(&self) -> Option<bool> {
         self.compress
+    }
+    pub fn enable_monitor(&self) -> Option<bool> {
+        self.enable_monitor
     }
 }

@@ -10,6 +10,7 @@ use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::Receiver;
 
 use ppaass_common::common::PpaassAddress;
+use crate::config::ProxyConfiguration;
 
 use crate::monitor::data::{TransportSnapshot, TransportTraffic, TransportTrafficType};
 use crate::transport::TransportStatus;
@@ -31,21 +32,27 @@ pub(crate) struct TransportInfoAggregator {
     transport_snapshot_receiver: Receiver<TransportSnapshot>,
     transport_traffic_receiver: Receiver<TransportTraffic>,
     transport_infos: HashMap<String, TransportAggregateInfo>,
+    configuration: Arc<ProxyConfiguration>,
 }
 
 impl TransportInfoAggregator {
     pub fn new(
         transport_snapshot_receiver: Receiver<TransportSnapshot>,
         transport_traffic_receiver: Receiver<TransportTraffic>,
+        configuration: Arc<ProxyConfiguration>,
     ) -> Self {
         Self {
             transport_snapshot_receiver,
             transport_traffic_receiver,
             transport_infos: HashMap::new(),
+            configuration
         }
     }
 
     pub async fn start(mut self) {
+        if let Some(false) = self.configuration.enable_monitor() {
+            return;
+        }
         let mut transport_snapshot_receiver = self.transport_snapshot_receiver;
         let mut transport_traffic_receiver = self.transport_traffic_receiver;
         let mut loop_interval = tokio::time::interval(Duration::from_secs(1));

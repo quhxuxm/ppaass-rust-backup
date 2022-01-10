@@ -11,3 +11,4 @@ target_connect_timeout = 20
 agent_connection_max_idle = 300
 target_connection_max_idle = 300
 log_config = "log-proxy.yaml"
+enable_monitor = false

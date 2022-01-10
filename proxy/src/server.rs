@@ -120,9 +120,13 @@ impl Server {
         let info_collector = Arc::new(TransportInfoCollector::new(
             transport_snapshot_sender,
             transport_traffic_sender,
+            self.configuration.clone(),
         ));
-        let info_aggregator =
-            TransportInfoAggregator::new(transport_snapshot_receiver, transport_traffic_receiver);
+        let info_aggregator = TransportInfoAggregator::new(
+            transport_snapshot_receiver,
+            transport_traffic_receiver,
+            self.configuration.clone(),
+        );
         self.monitor_runtime.spawn(async move {
             info_aggregator.start().await;
         });
