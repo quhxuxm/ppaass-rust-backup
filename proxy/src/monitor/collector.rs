@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use log::error;
-use serde::de::Unexpected::Option;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::Sender;
 
