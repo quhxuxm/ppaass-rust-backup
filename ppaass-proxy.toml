@@ -1,5 +1,6 @@
-port = 80
-#port = 9999
+#port = 80
+port = 9999
+monitor_port = 9998
 buffer_size = 1048576
 max_frame_size = 2097152
 master_thread_number = 32

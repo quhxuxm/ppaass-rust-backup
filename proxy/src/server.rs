@@ -11,9 +11,11 @@ use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
 
 use crate::config::ProxyConfiguration;
+use crate::monitor;
 use crate::monitor::aggregator::TransportInfoAggregator;
 use crate::monitor::collector::TransportInfoCollector;
 use crate::monitor::data::{TransportSnapshot, TransportTraffic};
+use crate::monitor::ui::MonitorUi;
 use crate::transport::{Transport, TransportStatus};
 
 const CONFIG_FILE_PATH: &str = "ppaass-proxy.toml";
@@ -130,7 +132,8 @@ impl Server {
         self.monitor_runtime.spawn(async move {
             info_aggregator.start().await;
         });
-        self.master_runtime.block_on(async move {
+
+        self.master_runtime.spawn(async move {
             let local_port = proxy_server_config.port().unwrap();
             let local_ip = IpAddr::from(LOCAL_ADDRESS);
             let local_address = SocketAddr::new(local_ip, local_port);
@@ -176,6 +179,12 @@ impl Server {
                     info!("Graceful close agent tcp transport: [{}]", transport_id);
                 });
             }
+        });
+        self.monitor_runtime.block_on(async {
+            let monitor_ui = MonitorUi::new(self.configuration.clone());
+            if let Err(e) = monitor_ui.start().await {
+                error!("Fail to start monitor ui because of error : {:#?}", e);
+            };
         });
         Ok(())
     }
