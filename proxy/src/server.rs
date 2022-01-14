@@ -15,8 +15,7 @@ use crate::monitor;
 use crate::monitor::aggregator::TransportInfoAggregator;
 use crate::monitor::collector::TransportInfoCollector;
 use crate::monitor::data::{TransportSnapshot, TransportTraffic};
-use crate::monitor::ui::MonitorUi;
-use crate::transport::{Transport, TransportStatus};
+use crate::transport::Transport;
 
 const CONFIG_FILE_PATH: &str = "ppaass-proxy.toml";
 const LOCAL_ADDRESS: [u8; 4] = [0u8; 4];
@@ -172,19 +171,8 @@ impl Server {
                         error!("Fail to start agent tcp transport because of error, transport:[{}], agent address:[{}], error: {:#?}",transport_id,
                             agent_remote_address,e);
                     }
-                    if let Err(e) = transport.close().await {
-                        error!("Fail to close agent tcp transport because of error, transport:[{}], agent address:[{}], error: {:#?}",transport_id,
-                            agent_remote_address,e);
-                    }
-                    info!("Graceful close agent tcp transport: [{}]", transport_id);
                 });
             }
-        });
-        self.monitor_runtime.block_on(async {
-            let monitor_ui = MonitorUi::new(self.configuration.clone());
-            if let Err(e) = monitor_ui.start().await {
-                error!("Fail to start monitor ui because of error : {:#?}", e);
-            };
         });
         Ok(())
     }

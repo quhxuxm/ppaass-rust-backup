@@ -8,7 +8,6 @@ pub const DEFAULT_UDP_BUFFER_SIZE: usize = 65536;
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct ProxyConfiguration {
     port: Option<u16>,
-    monitor_port: Option<u16>,
     buffer_size: Option<usize>,
     max_frame_size: Option<usize>,
     master_thread_number: Option<usize>,
@@ -78,9 +77,5 @@ impl ProxyConfiguration {
 
     pub fn enable_monitor(&self) -> Option<bool> {
         self.enable_monitor
-    }
-
-    pub fn monitor_port(&self) -> Option<u16> {
-        self.monitor_port
     }
 }

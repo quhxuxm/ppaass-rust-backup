@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Display, Formatter};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use anyhow::Context;
 use anyhow::Result;
@@ -120,7 +120,7 @@ impl Transport {
         rsa_public_key: impl Into<String>,
         rsa_private_key: impl Into<String>,
     ) -> Result<()> {
-        self.info_collector.publish_transport_snapshot(self).await;
+        self.info_collector.publish_transport_snapshot(self);
         let ppaass_message_codec = PpaassMessageCodec::new(
             rsa_public_key.into(),
             rsa_private_key.into(),
@@ -266,7 +266,7 @@ impl Transport {
                 self.source_address = Some(agent_message_source_address.clone());
                 self.target_address = Some(agent_message_target_address.clone());
                 self.status = TransportStatus::Initialized;
-                self.info_collector.publish_transport_snapshot(self).await;
+                self.info_collector.publish_transport_snapshot(self);
                 Ok(Some(InitResult {
                     agent_stream_framed,
                     target_tcp_stream: Some(target_tcp_stream),
@@ -307,7 +307,7 @@ impl Transport {
                 self.source_address = Some(agent_message_source_address.clone());
                 self.target_address = Some(agent_message_target_address.clone());
                 self.status = TransportStatus::Initialized;
-                self.info_collector.publish_transport_snapshot(self).await;
+                self.info_collector.publish_transport_snapshot(self);
                 Ok(Some(InitResult {
                     agent_stream_framed,
                     target_tcp_stream: None,
@@ -337,7 +337,7 @@ impl Transport {
             .into());
         }
         self.status = TransportStatus::Relaying;
-        self.info_collector.publish_transport_snapshot(self).await;
+        self.info_collector.publish_transport_snapshot(self);
         let transport_id_for_target_to_proxy_relay = self.id.clone();
         let transport_id_for_proxy_to_target_relay = self.id.clone();
         let user_token = self
@@ -485,7 +485,7 @@ impl Transport {
             .into());
         }
         self.status = TransportStatus::Relaying;
-        self.info_collector.publish_transport_snapshot(self).await;
+        self.info_collector.publish_transport_snapshot(self);
         let user_token = self
             .user_token
             .as_ref()
@@ -735,19 +735,6 @@ impl Transport {
         Ok(())
     }
 
-    pub async fn close(mut self) -> Result<()> {
-        self.end_time = {
-            Some(
-                SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)?
-                    .as_millis(),
-            )
-        };
-        self.status = TransportStatus::Closed;
-        self.info_collector.publish_transport_snapshot(&self).await;
-        Ok(())
-    }
-
     pub fn id(&self) -> &str {
         &self.id
     }
@@ -772,5 +759,22 @@ impl Transport {
     }
     pub fn target_address(&self) -> &Option<PpaassAddress> {
         &self.target_address
+    }
+}
+
+impl Drop for Transport {
+    fn drop(&mut self) {
+        self.end_time = {
+            Some(
+                match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+                    Err(e) => Duration::default(),
+                    Ok(r) => r,
+                }
+                .as_millis(),
+            )
+        };
+        self.status = TransportStatus::Closed;
+        self.info_collector.publish_transport_snapshot(&self);
+        info!("Graceful close agent tcp transport: [{}]", self.id);
     }
 }

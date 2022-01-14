@@ -27,7 +27,7 @@ impl TransportInfoCollector {
         }
     }
 
-    pub async fn publish_transport_snapshot(&self, transport: &Transport) {
+    pub fn publish_transport_snapshot(&self, transport: &Transport) {
         if let Some(false) = self.configuration.enable_monitor() {
             return;
         }
