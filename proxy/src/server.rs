@@ -132,7 +132,7 @@ impl Server {
             info_aggregator.start().await;
         });
 
-        self.master_runtime.spawn(async move {
+        self.master_runtime.block_on(async move {
             let local_port = proxy_server_config.port().unwrap();
             let local_ip = IpAddr::from(LOCAL_ADDRESS);
             let local_address = SocketAddr::new(local_ip, local_port);
