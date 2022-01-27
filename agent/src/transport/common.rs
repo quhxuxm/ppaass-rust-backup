@@ -7,6 +7,7 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
+use tokio_tfo::TfoStream;
 use tokio_util::codec::{Decoder, Framed};
 
 use ppaass_common::codec::PpaassMessageCodec;
@@ -116,10 +117,10 @@ where
     fn create_proxy_framed(
         rsa_public_key: String,
         rsa_private_key: String,
-        proxy_stream: TcpStream,
+        proxy_stream: TfoStream,
         max_frame_size: usize,
         compress: bool,
-    ) -> Framed<TcpStream, PpaassMessageCodec> {
+    ) -> Framed<TfoStream, PpaassMessageCodec> {
         let ppaass_message_codec =
             PpaassMessageCodec::new(rsa_public_key, rsa_private_key, max_frame_size, compress);
         let mut proxy_framed = ppaass_message_codec.framed(proxy_stream);
@@ -128,7 +129,7 @@ where
 
     async fn start(
         &mut self,
-        client_tcp_stream: TcpStream,
+        client_tcp_stream: TfoStream,
         rsa_public_key: String,
         rsa_private_key: String,
     ) -> Result<()>;

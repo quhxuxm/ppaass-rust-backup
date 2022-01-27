@@ -9,9 +9,10 @@ use bytes::BufMut;
 use futures::StreamExt;
 use futures_util::SinkExt;
 use log::{debug, error, info};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWriteExt, split};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tokio::net::{TcpStream, UdpSocket};
+use tokio_tfo::TfoStream;
 use tokio_util::codec::Framed;
 
 use ppaass_common::agent::{
@@ -32,7 +33,7 @@ use crate::error::PpaassProxyError;
 use crate::monitor::collector::TransportInfoCollector;
 use crate::monitor::data::TransportTrafficType;
 
-type AgentStreamFramed = Framed<TcpStream, PpaassMessageCodec>;
+type AgentStreamFramed = Framed<TfoStream, PpaassMessageCodec>;
 const LOCAL_ADDRESS: [u8; 4] = [0u8; 4];
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -79,7 +80,7 @@ impl Display for Transport {
 
 struct InitResult {
     agent_stream_framed: AgentStreamFramed,
-    target_tcp_stream: Option<TcpStream>,
+    target_tcp_stream: Option<TfoStream>,
     target_udp_socket: Option<UdpSocket>,
 }
 
@@ -116,7 +117,7 @@ impl Transport {
     /// * Closed status: A transport is closed.
     pub async fn start(
         &mut self,
-        agent_stream: TcpStream,
+        agent_stream: TfoStream,
         rsa_public_key: impl Into<String>,
         rsa_private_key: impl Into<String>,
     ) -> Result<()> {
@@ -204,7 +205,7 @@ impl Transport {
             PpaassAgentMessagePayloadType::TcpConnect => {
                 let target_socket_address: SocketAddr =
                     agent_message_target_address.clone().try_into()?;
-                let mut target_tcp_stream = match TcpStream::connect(target_socket_address).await {
+                let mut target_tcp_stream = match TfoStream::connect(target_socket_address).await {
                     Err(e) => {
                         error!("Fail connect to target, transport: [{}], agent message id: [{}], target address: [{}], because of error: {:#?}", agent_message_id, self, target_socket_address, e);
                         let tcp_connect_fail_message_payload = PpaassProxyMessagePayload::new(
@@ -472,7 +473,7 @@ impl Transport {
     async fn tcp_relay(
         &mut self,
         agent_stream_framed: AgentStreamFramed,
-        target_tcp_stream: TcpStream,
+        target_tcp_stream: TfoStream,
     ) -> Result<()> {
         if self.status != TransportStatus::Initialized {
             error!("Invalid tcp transport status, tcp transport: [{}], current status: [{:?}], expect status: [{:?}]", self,
@@ -505,7 +506,7 @@ impl Transport {
             .context("Can not unwrap target edge address")?;
         let target_address_t2p = target_address.clone();
         let target_address_p2t = target_address.clone();
-        let (mut target_read, mut target_write) = target_tcp_stream.into_split();
+        let (mut target_read, mut target_write) = split(target_tcp_stream);
         let (mut agent_write_part, mut agent_read_part) = agent_stream_framed.split();
         let transport_id_t2p = self.id.clone();
         let transport_id_p2t = self.id.clone();

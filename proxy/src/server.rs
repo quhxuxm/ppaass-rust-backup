@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use log::{error, info};
 use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
+use tokio_tfo::TfoListener;
 
 use crate::config::ProxyConfiguration;
 use crate::monitor;
@@ -136,7 +137,7 @@ impl Server {
             let local_port = proxy_server_config.port().unwrap();
             let local_ip = IpAddr::from(LOCAL_ADDRESS);
             let local_address = SocketAddr::new(local_ip, local_port);
-            let tcp_listener = TcpListener::bind(local_address).await.unwrap_or_else(|e| panic!("Fail to start proxy because of error, error: {:#?}", e));
+            let tcp_listener = TfoListener::bind(local_address).await.unwrap_or_else(|e| panic!("Fail to start proxy because of error, error: {:#?}", e));
             //Start to processing client protocol
             info!("Success to bind TCP server on port: [{}]", local_port);
             loop {
@@ -147,7 +148,7 @@ impl Server {
                     }
                     Ok(r)=>{
                         if let Err(e) = r.0.set_nodelay(true) {
-                            error!("Fail to set no delay on agent stream because of error, agent stream:{:?}, error: {:#?}", r.0, e);
+                            error!("Fail to set no delay on agent stream because of error, agent stream:{:?}, error: {:#?}", r.0.peer_addr(), e);
                         }
                         r
                     }

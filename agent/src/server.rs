@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use log::{error, info};
 use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
+use tokio_tfo::{TfoListener, TfoStream};
 
 use crate::config::AgentConfiguration;
 use crate::transport::common::{Transport, TransportMetaInfo, TransportSnapshot, TransportStatus};
@@ -122,7 +123,7 @@ impl Server {
                     }
                     Ok(r)=>{
                         if let Err(e) = r.0.set_nodelay(true) {
-                            error!("Fail to set no delay on agent stream because of error, agent stream:{:?}, error: {:#?}", r.0, e);
+                            error!("Fail to set no delay on agent stream because of error, agent stream:{:?}, error: {:#?}", r.0.peer_addr(), e);
                         }
                         r
                     }
@@ -158,7 +159,7 @@ impl Server {
                         let socks5_transport_id = transport_meta_info.id.clone();
                         let mut socks5_transport = Socks5Transport::new(transport_meta_info);
                         info!("Receive a client stream from: [{}], assign it to socks5 transport: [{}].", client_remote_addr, socks5_transport_id);
-                        if let Err(e) = socks5_transport.start(client_stream, proxy_public_key, agent_private_key).await {
+                        if let Err(e) = socks5_transport.start(client_stream.into(), proxy_public_key, agent_private_key).await {
                             error!("Fail to start agent socks5 transport because of error, transport:[{}], agent address:[{}], error: {:#?}",socks5_transport_id,
                             client_remote_addr,e);
                         }
@@ -172,7 +173,7 @@ impl Server {
                     let http_transport_id = transport_meta_info.id.clone();
                     let mut http_transport = HttpTransport::new(transport_meta_info);
                     info!("Receive a client stream from: [{}], assign it to http transport: [{}].", client_remote_addr, http_transport_id);
-                    if let Err(e) = http_transport.start(client_stream, proxy_public_key, agent_private_key).await {
+                    if let Err(e) = http_transport.start(client_stream.into(), proxy_public_key, agent_private_key).await {
                         error!("Fail to start agent http transport because of error, transport:[{}], agent address:[{}], error: {:#?}",http_transport_id,
                             client_remote_addr,e);
                     }

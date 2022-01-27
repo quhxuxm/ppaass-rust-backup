@@ -8,8 +8,9 @@ use async_trait::async_trait;
 use bytes::BufMut;
 use futures_util::{SinkExt, StreamExt};
 use log::{debug, error, info};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, split};
 use tokio::net::{TcpStream, UdpSocket};
+use tokio_tfo::TfoStream;
 use tokio_util::codec::{Decoder, Framed};
 
 use ppaass_common::agent::{PpaassAgentMessagePayload, PpaassAgentMessagePayloadType};
@@ -39,10 +40,10 @@ pub(crate) struct Socks5Transport {
     meta_info: TransportMetaInfo,
 }
 
-type PpaassMessageFramed = Framed<TcpStream, PpaassMessageCodec>;
-type Socks5ConnectFramed<'a> = Framed<&'a mut TcpStream, Socks5ConnectCodec>;
+type PpaassMessageFramed = Framed<TfoStream, PpaassMessageCodec>;
+type Socks5ConnectFramed<'a> = Framed<&'a mut TfoStream, Socks5ConnectCodec>;
 struct InitResult {
-    client_tcp_stream: Option<TcpStream>,
+    client_tcp_stream: Option<TfoStream>,
     agent_bind_udp_socket: Option<Arc<UdpSocket>>,
     proxy_framed: PpaassMessageFramed,
     connect_message_id: String,
@@ -54,7 +55,7 @@ struct InitResult {
 impl Transport for Socks5Transport {
     async fn start(
         &mut self,
-        client_tcp_stream: TcpStream,
+        client_tcp_stream: TfoStream,
         rsa_public_key: String,
         rsa_private_key: String,
     ) -> Result<()> {
@@ -102,7 +103,7 @@ impl Socks5Transport {
         Self { meta_info }
     }
 
-    async fn authenticate(&mut self, mut client_tcp_stream: TcpStream) -> Result<TcpStream> {
+    async fn authenticate(&mut self, mut client_tcp_stream: TfoStream) -> Result<TfoStream> {
         if self.meta_info.status != TransportStatus::New {
             error!("Fail to do socks5 authenticate process because of wrong status, socks5 transport: [{}]", self.meta_info);
             return Err(PpaassAgentError::InvalidTransportStatus(
@@ -150,7 +151,7 @@ impl Socks5Transport {
 
     async fn init(
         &mut self,
-        mut client_tcp_stream: TcpStream,
+        mut client_tcp_stream: TfoStream,
         rsa_public_key: String,
         rsa_private_key: String,
     ) -> Result<Option<InitResult>> {
@@ -472,7 +473,7 @@ impl Socks5Transport {
         Ok(())
     }
 
-    async fn connect_to_proxy(&mut self) -> Result<Option<TcpStream>> {
+    async fn connect_to_proxy(&mut self) -> Result<Option<TfoStream>> {
         let proxy_addresses = self
             .meta_info
             .configuration
@@ -480,7 +481,7 @@ impl Socks5Transport {
             .clone()
             .context("Proxy address did not configure properly")?;
         let mut proxy_addresses_iter = proxy_addresses.iter();
-        let proxy_stream: Option<TcpStream> = loop {
+        let proxy_stream: Option<TfoStream> = loop {
             let proxy_address = match proxy_addresses_iter.next() {
                 None => break None,
                 Some(r) => r,
@@ -493,7 +494,7 @@ impl Socks5Transport {
                 Ok(address) => address,
             };
             let proxy_address_string: String = proxy_address.into();
-            match TcpStream::connect(proxy_address_string.clone()).await {
+            match TfoStream::connect(proxy_address_string.parse().unwrap()).await {
                 Err(e) => {
                     error!("Fail connect to proxy address: [{}] because of error, socks5 transport: [{}], error: {:#?}", self.meta_info,
                                                         proxy_address_string, e);
@@ -754,10 +755,7 @@ impl Socks5Transport {
         let (mut proxy_framed_write, mut proxy_framed_read) = proxy_framed.split();
         self.meta_info.status = TransportStatus::Relaying;
         let user_token = self.meta_info.user_token.clone();
-        let (mut client_tcp_stream_read, mut client_tcp_stream_write) = client_tcp_stream
-            .take()
-            .context("Fail to unwrap client tcp stream")?
-            .into_split();
+        let (mut client_tcp_stream_read, mut client_tcp_stream_write) = split(client_tcp_stream.take().unwrap());
         let transport_id_p2c = self.meta_info.id.clone();
         let transport_id_c2p = self.meta_info.id.clone();
         let connect_message_id_c2p = connect_message_id.clone();
