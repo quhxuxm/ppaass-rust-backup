@@ -7,15 +7,10 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use log::{error, info};
-use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
 use tokio_tfo::TfoListener;
 
 use crate::config::ProxyConfiguration;
-use crate::monitor;
-use crate::monitor::aggregator::TransportInfoAggregator;
-use crate::monitor::collector::TransportInfoCollector;
-use crate::monitor::data::{TransportSnapshot, TransportTraffic};
 use crate::transport::Transport;
 
 const CONFIG_FILE_PATH: &str = "ppaass-proxy.toml";
@@ -115,24 +110,6 @@ impl Server {
             .expect("Fail to read proxy private key.");
         let proxy_server_config = self.configuration.clone();
         let worker_runtime = self.worker_runtime.clone();
-        let (transport_snapshot_sender, transport_snapshot_receiver) =
-            tokio::sync::mpsc::channel::<TransportSnapshot>(1024);
-        let (transport_traffic_sender, transport_traffic_receiver) =
-            tokio::sync::mpsc::channel::<TransportTraffic>(1024);
-        let info_collector = Arc::new(TransportInfoCollector::new(
-            transport_snapshot_sender,
-            transport_traffic_sender,
-            self.configuration.clone(),
-        ));
-        let info_aggregator = TransportInfoAggregator::new(
-            transport_snapshot_receiver,
-            transport_traffic_receiver,
-            self.configuration.clone(),
-        );
-        self.monitor_runtime.spawn(async move {
-            info_aggregator.start().await;
-        });
-
         self.master_runtime.block_on(async move {
             let local_port = proxy_server_config.port().unwrap();
             let local_ip = IpAddr::from(LOCAL_ADDRESS);
@@ -153,13 +130,12 @@ impl Server {
                         r
                     }
                 };
-                let info_collector = info_collector.clone();
                 let agent_public_key = agent_public_key.clone();
                 let proxy_private_key = proxy_private_key.clone();
                 let proxy_server_config = proxy_server_config.clone();
                 worker_runtime.spawn(async move {
                     let mut transport = match Transport::new(agent_remote_address,
-                        proxy_server_config, info_collector.clone()){
+                        proxy_server_config){
                         Err(e)=>{
                             error!("Fail to create agent tcp transport because of error, error: {:#?}",e );
                             return;
