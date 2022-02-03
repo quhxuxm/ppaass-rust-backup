@@ -1,8 +1,4 @@
-use std::error::Error;
-
 use ppaass_common::agent::PpaassAgentMessagePayloadType;
-use ppaass_common::common::PpaassAddress;
-use ppaass_common::error::PpaassCommonError;
 
 use crate::transport::TransportStatus;
 
@@ -10,13 +6,20 @@ use crate::transport::TransportStatus;
 pub(crate) enum PpaassProxyError {
     #[error("Connect to target fail")]
     ConnectToTargetFail(#[from] std::io::Error),
-    #[error("Invalid tcp transport status, Transport: [{0}] require status: {1:#?}, get status: {2:#?}")]
+    #[error(
+        "Invalid tcp transport status, Transport: [{0}] require status: {1:#?}, get status: {2:#?}"
+    )]
     InvalidTcpTransportStatus(String, TransportStatus, TransportStatus),
-    #[error("Invalid udp transport status, Transport: [{0}] require status: {1:#?}, get status: {2:#?}")]
+    #[error(
+        "Invalid udp transport status, Transport: [{0}] require status: {1:#?}, get status: {2:#?}"
+    )]
     InvalidUdpTransportStatus(String, TransportStatus, TransportStatus),
     #[error("Receive invalid agent message, Transport: [{0}] require status: {1:#?}, get status: {2:#?}")]
-    ReceiveInvalidAgentMessage(String, PpaassAgentMessagePayloadType, PpaassAgentMessagePayloadType),
+    ReceiveInvalidAgentMessage(
+        String,
+        PpaassAgentMessagePayloadType,
+        PpaassAgentMessagePayloadType,
+    ),
     #[error("Unknown error happen")]
     UnknownError,
 }
-
