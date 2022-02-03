@@ -21,7 +21,6 @@ const PROXY_PRIVATE_KEY_PATH: &str = "ProxyPrivateKey.pem";
 
 pub struct Server {
     master_runtime: Runtime,
-    monitor_runtime: Arc<Runtime>,
     worker_runtime: Arc<Runtime>,
     configuration: Arc<ProxyConfiguration>,
 }
@@ -83,21 +82,8 @@ impl Server {
         worker_runtime_builder.enable_all();
         let worker_runtime = worker_runtime_builder.build()?;
 
-        let mut monitor_runtime_builder = tokio::runtime::Builder::new_multi_thread();
-        monitor_runtime_builder
-            .worker_threads(proxy_server_config.monitor_thread_number().unwrap_or(1));
-
-        monitor_runtime_builder.thread_name("proxy-monitor");
-        monitor_runtime_builder.thread_keep_alive(Duration::from_secs(
-            proxy_server_config
-                .thread_timeout()
-                .with_context(|| "Can not get thread time out from proxy configuration.")?,
-        ));
-        monitor_runtime_builder.enable_all();
-        let monitor_runtime = monitor_runtime_builder.build()?;
         Ok(Self {
             master_runtime,
-            monitor_runtime: Arc::new(monitor_runtime),
             worker_runtime: Arc::new(worker_runtime),
             configuration: Arc::new(proxy_server_config),
         })
