@@ -85,6 +85,21 @@ impl Server {
             let tcp_listener = TfoListener::bind(local_address).await.unwrap_or_else(|e| panic!("Fail to start proxy because of error, error: {:#?}", e));
             //Start to processing client protocol
             info!("Success to bind TCP server on port: [{}]", local_port);
+            let mut worker_runtime_builder = tokio::runtime::Builder::new_multi_thread();
+            worker_runtime_builder.worker_threads(
+                proxy_server_config
+                    .worker_thread_number().unwrap_or(8)
+            );
+            worker_runtime_builder.max_blocking_threads(
+                proxy_server_config
+                    .max_blocking_threads().unwrap_or(4),
+            );
+            worker_runtime_builder.thread_name("proxy-worker");
+            worker_runtime_builder.thread_keep_alive(Duration::from_secs(
+                proxy_server_config
+                    .thread_timeout().unwrap_or(2)
+            ));
+            worker_runtime_builder.enable_all();
             loop {
                 let agent_public_key = agent_public_key.clone();
                 let proxy_private_key = proxy_private_key.clone();
@@ -100,22 +115,7 @@ impl Server {
                         r
                     }
                 };
-
-                let mut worker_runtime_builder = tokio::runtime::Builder::new_multi_thread();
-                worker_runtime_builder.worker_threads(
-                    proxy_server_config
-                        .worker_thread_number().unwrap_or(8)
-                );
-                worker_runtime_builder.max_blocking_threads(
-                    proxy_server_config
-                        .max_blocking_threads().unwrap_or(4),
-                );
-                worker_runtime_builder.thread_name(format!("proxy-worker::{}", agent_remote_address) );
-                worker_runtime_builder.thread_keep_alive(Duration::from_secs(
-                    proxy_server_config
-                        .thread_timeout().unwrap_or(2)
-                ));
-                worker_runtime_builder.enable_all();
+                let proxy_server_config = proxy_server_config.clone();
                 let worker_runtime = match  worker_runtime_builder.build(){
                     Err(e)=>{
                         error!("Fail to start worker thread for agent stream:{:?}, error: {:#?}",agent_remote_address, e);
@@ -123,9 +123,6 @@ impl Server {
                     }
                     Ok(r)=>r
                 };
-
-                let proxy_server_config = proxy_server_config.clone();
-
                 worker_runtime.spawn(async move {
                     let mut transport = match Transport::new(agent_remote_address,
                         proxy_server_config){
