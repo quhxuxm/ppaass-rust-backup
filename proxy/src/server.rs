@@ -21,8 +21,9 @@ const PROXY_PRIVATE_KEY_PATH: &str = "ProxyPrivateKey.pem";
 
 pub struct Server {
     master_runtime: Runtime,
-    worker_runtime: Arc<Runtime>,
     configuration: Arc<ProxyConfiguration>,
+    agent_public_key: String,
+    proxy_private_key: String,
 }
 
 impl Server {
@@ -60,42 +61,23 @@ impl Server {
         let master_runtime = master_runtime_builder
             .build()
             .with_context(|| "Fail to build init tokio runtime.")?;
-        let mut worker_runtime_builder = tokio::runtime::Builder::new_multi_thread();
-        worker_runtime_builder.worker_threads(
-            proxy_server_config
-                .worker_thread_number()
-                .with_context(|| "Can not get relay thread number from proxy configuration.")?,
-        );
-        worker_runtime_builder.max_blocking_threads(
-            proxy_server_config
-                .max_blocking_threads()
-                .with_context(|| {
-                    "Can not get max blocking threads number from proxy configuration."
-                })?,
-        );
-        worker_runtime_builder.thread_name("proxy-worker");
-        worker_runtime_builder.thread_keep_alive(Duration::from_secs(
-            proxy_server_config
-                .thread_timeout()
-                .with_context(|| "Can not get thread time out from proxy configuration.")?,
-        ));
-        worker_runtime_builder.enable_all();
-        let worker_runtime = worker_runtime_builder.build()?;
 
-        Ok(Self {
-            master_runtime,
-            worker_runtime: Arc::new(worker_runtime),
-            configuration: Arc::new(proxy_server_config),
-        })
-    }
-
-    pub fn run(&self) -> Result<()> {
         let agent_public_key = std::fs::read_to_string(Path::new(AGENT_PUBLIC_KEY_PATH))
             .expect("Fail to read agent public key.");
         let proxy_private_key = std::fs::read_to_string(Path::new(PROXY_PRIVATE_KEY_PATH))
             .expect("Fail to read proxy private key.");
+        Ok(Self {
+            master_runtime,
+            configuration: Arc::new(proxy_server_config),
+            agent_public_key,
+            proxy_private_key,
+        })
+    }
+
+    pub fn run(&self) -> Result<()> {
         let proxy_server_config = self.configuration.clone();
-        let worker_runtime = self.worker_runtime.clone();
+        let agent_public_key = self.agent_public_key.clone();
+        let proxy_private_key = self.proxy_private_key.clone();
         self.master_runtime.block_on(async move {
             let local_port = proxy_server_config.port().unwrap();
             let local_ip = IpAddr::from(LOCAL_ADDRESS);
@@ -103,7 +85,24 @@ impl Server {
             let tcp_listener = TfoListener::bind(local_address).await.unwrap_or_else(|e| panic!("Fail to start proxy because of error, error: {:#?}", e));
             //Start to processing client protocol
             info!("Success to bind TCP server on port: [{}]", local_port);
+            let mut worker_runtime_builder = tokio::runtime::Builder::new_multi_thread();
+            worker_runtime_builder.worker_threads(
+                proxy_server_config
+                    .worker_thread_number().unwrap_or(8)
+            );
+            worker_runtime_builder.max_blocking_threads(
+                proxy_server_config
+                    .max_blocking_threads().unwrap_or(4),
+            );
+            worker_runtime_builder.thread_name("proxy-worker");
+            worker_runtime_builder.thread_keep_alive(Duration::from_secs(
+                proxy_server_config
+                    .thread_timeout().unwrap_or(2)
+            ));
+            worker_runtime_builder.enable_all();
             loop {
+                let agent_public_key = agent_public_key.clone();
+                let proxy_private_key = proxy_private_key.clone();
                 let (agent_stream, agent_remote_address)  =match  tcp_listener.accept().await{
                     Err(e)=>{
                         error!("Fail to accept agent protocol because of error: {:#?}", e);
@@ -116,9 +115,14 @@ impl Server {
                         r
                     }
                 };
-                let agent_public_key = agent_public_key.clone();
-                let proxy_private_key = proxy_private_key.clone();
                 let proxy_server_config = proxy_server_config.clone();
+                let worker_runtime = match  worker_runtime_builder.build(){
+                    Err(e)=>{
+                        error!("Fail to start worker thread for agent stream:{:?}, error: {:#?}",agent_remote_address, e);
+                        continue;
+                    }
+                    Ok(r)=>r
+                };
                 worker_runtime.spawn(async move {
                     let mut transport = match Transport::new(agent_remote_address,
                         proxy_server_config){
@@ -130,7 +134,7 @@ impl Server {
                     };
                     let transport_id = transport.id().to_string();
                     info!("Receive a agent stream from: [{}], assign it to transport: [{}].", agent_remote_address, transport_id);
-                    if let Err(e) = transport.start(agent_stream, agent_public_key, proxy_private_key).await {
+                    if let Err(e) = transport.start(agent_stream, &agent_public_key, &proxy_private_key).await {
                         error!("Fail to start agent tcp transport because of error, transport:[{}], agent address:[{}], error: {:#?}",transport_id,
                             agent_remote_address,e);
                     }
