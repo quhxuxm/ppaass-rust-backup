@@ -21,7 +21,6 @@ const PROXY_PRIVATE_KEY_PATH: &str = "ProxyPrivateKey.pem";
 
 pub struct Server {
     master_runtime: Runtime,
-    worker_runtime: Arc<Runtime>,
     configuration: Arc<ProxyConfiguration>,
 }
 
@@ -60,31 +59,8 @@ impl Server {
         let master_runtime = master_runtime_builder
             .build()
             .with_context(|| "Fail to build init tokio runtime.")?;
-        let mut worker_runtime_builder = tokio::runtime::Builder::new_multi_thread();
-        worker_runtime_builder.worker_threads(
-            proxy_server_config
-                .worker_thread_number()
-                .with_context(|| "Can not get relay thread number from proxy configuration.")?,
-        );
-        worker_runtime_builder.max_blocking_threads(
-            proxy_server_config
-                .max_blocking_threads()
-                .with_context(|| {
-                    "Can not get max blocking threads number from proxy configuration."
-                })?,
-        );
-        worker_runtime_builder.thread_name("proxy-worker");
-        worker_runtime_builder.thread_keep_alive(Duration::from_secs(
-            proxy_server_config
-                .thread_timeout()
-                .with_context(|| "Can not get thread time out from proxy configuration.")?,
-        ));
-        worker_runtime_builder.enable_all();
-        let worker_runtime = worker_runtime_builder.build()?;
-
         Ok(Self {
             master_runtime,
-            worker_runtime: Arc::new(worker_runtime),
             configuration: Arc::new(proxy_server_config),
         })
     }
@@ -95,8 +71,7 @@ impl Server {
         let proxy_private_key = std::fs::read_to_string(Path::new(PROXY_PRIVATE_KEY_PATH))
             .expect("Fail to read proxy private key.");
         let proxy_server_config = self.configuration.clone();
-        let worker_runtime = self.worker_runtime.clone();
-        self.master_runtime.block_on(async move {
+        self.master_runtime.block_on(async move{
             let local_port = proxy_server_config.port().unwrap();
             let local_ip = IpAddr::from(LOCAL_ADDRESS);
             let local_address = SocketAddr::new(local_ip, local_port);
@@ -119,22 +94,20 @@ impl Server {
                 let agent_public_key = agent_public_key.clone();
                 let proxy_private_key = proxy_private_key.clone();
                 let proxy_server_config = proxy_server_config.clone();
-                worker_runtime.spawn(async move {
-                    let mut transport = match Transport::new(agent_remote_address,
-                        proxy_server_config){
-                        Err(e)=>{
-                            error!("Fail to create agent tcp transport because of error, error: {:#?}",e );
-                            return;
-                        }
-                        Ok(r)=>r
-                    };
-                    let transport_id = transport.id().to_string();
-                    info!("Receive a agent stream from: [{}], assign it to transport: [{}].", agent_remote_address, transport_id);
-                    if let Err(e) = transport.start(agent_stream, agent_public_key, proxy_private_key).await {
-                        error!("Fail to start agent tcp transport because of error, transport:[{}], agent address:[{}], error: {:#?}",transport_id,
-                            agent_remote_address,e);
+                let mut transport = match Transport::new(agent_remote_address,
+                    proxy_server_config){
+                    Err(e)=>{
+                        error!("Fail to create agent tcp transport because of error, error: {:#?}",e );
+                        return;
                     }
-                });
+                    Ok(r)=>r
+                };
+                let transport_id = transport.id().to_string();
+                info!("Receive a agent stream from: [{}], assign it to transport: [{}].", agent_remote_address, transport_id);
+                if let Err(e) = transport.start(agent_stream, agent_public_key, proxy_private_key).await {
+                    error!("Fail to start agent tcp transport because of error, transport:[{}], agent address:[{}], error: {:#?}",transport_id,
+                            agent_remote_address,e);
+                }
             }
         });
         Ok(())

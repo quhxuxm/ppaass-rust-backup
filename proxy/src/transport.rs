@@ -11,7 +11,7 @@ use futures_util::SinkExt;
 use log::{debug, error, info};
 use tokio::io::{split, AsyncWriteExt};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
-use tokio::net::{TcpStream, UdpSocket};
+use tokio::net::UdpSocket;
 use tokio_tfo::TfoStream;
 use tokio_util::codec::Framed;
 
