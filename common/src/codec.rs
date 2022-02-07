@@ -17,8 +17,8 @@ pub struct PpaassMessageCodec {
 
 impl PpaassMessageCodec {
     pub fn new(
-        public_key: String,
-        private_key: String,
+        public_key: &str,
+        private_key: &str,
         max_frame_size: usize,
         compress: bool,
     ) -> Self {
@@ -27,7 +27,7 @@ impl PpaassMessageCodec {
         length_delimited_codec_builder.length_field_length(8);
         let length_delimited_codec = length_delimited_codec_builder.new_codec();
         Self {
-            rsa_crypto: RsaCrypto::new(public_key, private_key),
+            rsa_crypto: RsaCrypto::new(public_key.to_string(), private_key.to_string()),
             length_delimited_codec,
             compress,
         }

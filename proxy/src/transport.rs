@@ -113,12 +113,12 @@ impl Transport {
     pub async fn start(
         &mut self,
         agent_stream: TfoStream,
-        rsa_public_key: impl Into<String>,
-        rsa_private_key: impl Into<String>,
+        rsa_public_key: &str,
+        rsa_private_key: &str,
     ) -> Result<()> {
         let ppaass_message_codec = PpaassMessageCodec::new(
-            rsa_public_key.into(),
-            rsa_private_key.into(),
+            rsa_public_key,
+            rsa_private_key,
             self.configuration
                 .max_frame_size()
                 .unwrap_or(DEFAULT_TCP_MAX_FRAME_SIZE),
