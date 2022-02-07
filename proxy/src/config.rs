@@ -12,6 +12,7 @@ pub(crate) struct ProxyConfiguration {
     max_frame_size: Option<usize>,
     master_thread_number: Option<usize>,
     worker_thread_number: Option<usize>,
+    monitor_thread_number: Option<usize>,
     max_blocking_threads: Option<usize>,
     thread_timeout: Option<u64>,
     target_connect_timeout: Option<u64>,
@@ -19,6 +20,7 @@ pub(crate) struct ProxyConfiguration {
     target_connection_max_idle: Option<u64>,
     log_config: Option<String>,
     compress: Option<bool>,
+    enable_monitor: Option<bool>,
 }
 
 impl ProxyConfiguration {
@@ -42,6 +44,9 @@ impl ProxyConfiguration {
         self.worker_thread_number
     }
 
+    pub fn monitor_thread_number(&self) -> Option<usize> {
+        self.monitor_thread_number
+    }
     pub fn thread_timeout(&self) -> Option<u64> {
         self.thread_timeout
     }
@@ -68,5 +73,9 @@ impl ProxyConfiguration {
 
     pub fn compress(&self) -> Option<bool> {
         self.compress
+    }
+
+    pub fn enable_monitor(&self) -> Option<bool> {
+        self.enable_monitor
     }
 }

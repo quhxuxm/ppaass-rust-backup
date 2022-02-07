@@ -115,8 +115,8 @@ where
     Self: Send,
 {
     fn create_proxy_framed(
-        rsa_public_key: &str,
-        rsa_private_key: &str,
+        rsa_public_key: String,
+        rsa_private_key: String,
         proxy_stream: TfoStream,
         max_frame_size: usize,
         compress: bool,

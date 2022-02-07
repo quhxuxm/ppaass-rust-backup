@@ -235,8 +235,8 @@ impl HttpTransport {
         };
         let client_port = client_address.port();
         let mut proxy_framed = Self::create_proxy_framed(
-            &rsa_public_key,
-            &rsa_private_key,
+            rsa_public_key,
+            rsa_private_key,
             proxy_stream,
             self.meta_info
                 .configuration
