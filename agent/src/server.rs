@@ -9,7 +9,6 @@ use anyhow::{Context, Result};
 use log::{error, info};
 use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
-use tokio_tfo::{TfoListener, TfoStream};
 
 use crate::config::AgentConfiguration;
 use crate::transport::common::{Transport, TransportMetaInfo, TransportSnapshot, TransportStatus};

@@ -1,4 +1,3 @@
-use std::io::ErrorKind;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -8,9 +7,8 @@ use async_trait::async_trait;
 use bytes::BufMut;
 use futures_util::{SinkExt, StreamExt};
 use log::{debug, error, info};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, split};
+use tokio::io::{split, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpStream, UdpSocket};
-use tokio_tfo::TfoStream;
 use tokio_util::codec::{Decoder, Framed};
 
 use ppaass_common::agent::{PpaassAgentMessagePayload, PpaassAgentMessagePayloadType};
@@ -40,10 +38,10 @@ pub(crate) struct Socks5Transport {
     meta_info: TransportMetaInfo,
 }
 
-type PpaassMessageFramed = Framed<TfoStream, PpaassMessageCodec>;
-type Socks5ConnectFramed<'a> = Framed<&'a mut TfoStream, Socks5ConnectCodec>;
+type PpaassMessageFramed = Framed<TcpStream, PpaassMessageCodec>;
+type Socks5ConnectFramed<'a> = Framed<&'a mut TcpStream, Socks5ConnectCodec>;
 struct InitResult {
-    client_tcp_stream: Option<TfoStream>,
+    client_tcp_stream: Option<TcpStream>,
     agent_bind_udp_socket: Option<Arc<UdpSocket>>,
     proxy_framed: PpaassMessageFramed,
     connect_message_id: String,
@@ -55,7 +53,7 @@ struct InitResult {
 impl Transport for Socks5Transport {
     async fn start(
         &mut self,
-        client_tcp_stream: TfoStream,
+        client_tcp_stream: TcpStream,
         rsa_public_key: String,
         rsa_private_key: String,
     ) -> Result<()> {
@@ -103,7 +101,7 @@ impl Socks5Transport {
         Self { meta_info }
     }
 
-    async fn authenticate(&mut self, mut client_tcp_stream: TfoStream) -> Result<TfoStream> {
+    async fn authenticate(&mut self, mut client_tcp_stream: TcpStream) -> Result<TcpStream> {
         if self.meta_info.status != TransportStatus::New {
             error!("Fail to do socks5 authenticate process because of wrong status, socks5 transport: [{}]", self.meta_info);
             return Err(PpaassAgentError::InvalidTransportStatus(
@@ -151,7 +149,7 @@ impl Socks5Transport {
 
     async fn init(
         &mut self,
-        mut client_tcp_stream: TfoStream,
+        mut client_tcp_stream: TcpStream,
         rsa_public_key: String,
         rsa_private_key: String,
     ) -> Result<Option<InitResult>> {
@@ -473,7 +471,7 @@ impl Socks5Transport {
         Ok(())
     }
 
-    async fn connect_to_proxy(&mut self) -> Result<Option<TfoStream>> {
+    async fn connect_to_proxy(&mut self) -> Result<Option<TcpStream>> {
         let proxy_addresses = self
             .meta_info
             .configuration
@@ -481,7 +479,7 @@ impl Socks5Transport {
             .clone()
             .context("Proxy address did not configure properly")?;
         let mut proxy_addresses_iter = proxy_addresses.iter();
-        let proxy_stream: Option<TfoStream> = loop {
+        let proxy_stream: Option<TcpStream> = loop {
             let proxy_address = match proxy_addresses_iter.next() {
                 None => break None,
                 Some(r) => r,
@@ -494,7 +492,7 @@ impl Socks5Transport {
                 Ok(address) => address,
             };
             let proxy_address_string: String = proxy_address.into();
-            match TfoStream::connect(proxy_address_string.parse().unwrap()).await {
+            match TcpStream::connect(&proxy_address_string).await {
                 Err(e) => {
                     error!("Fail connect to proxy address: [{}] because of error, socks5 transport: [{}], error: {:#?}", self.meta_info,
                                                         proxy_address_string, e);
@@ -755,7 +753,8 @@ impl Socks5Transport {
         let (mut proxy_framed_write, mut proxy_framed_read) = proxy_framed.split();
         self.meta_info.status = TransportStatus::Relaying;
         let user_token = self.meta_info.user_token.clone();
-        let (mut client_tcp_stream_read, mut client_tcp_stream_write) = split(client_tcp_stream.take().unwrap());
+        let (mut client_tcp_stream_read, mut client_tcp_stream_write) =
+            split(client_tcp_stream.take().unwrap());
         let transport_id_p2c = self.meta_info.id.clone();
         let transport_id_c2p = self.meta_info.id.clone();
         let connect_message_id_c2p = connect_message_id.clone();
@@ -773,8 +772,7 @@ impl Socks5Transport {
                             "Fail to read data from agent client because of error, error: {:#?}",
                             e
                         );
-                        if let Err(e) = client_connection_closed_notifier_sender.send(true).await
-                        {
+                        if let Err(e) = client_connection_closed_notifier_sender.send(true).await {
                             error!("Fail to send client connection closed notification because of error, socks 5 transport: [{}], error: {:#?}", transport_id_c2p, e)
                         };
                         let connection_close_message_body = PpaassAgentMessagePayload::new(
@@ -920,10 +918,7 @@ impl Socks5Transport {
                         }
                     }
                     PpaassProxyMessagePayloadType::TcpConnectionClose => {
-                        info!(
-                            "Socks 5 transport:[{}] close",
-                            transport_id_p2c
-                        );
+                        info!("Socks 5 transport:[{}] close", transport_id_p2c);
                         return;
                     }
                     other_payload_type => {

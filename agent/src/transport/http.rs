@@ -1,4 +1,4 @@
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
 use std::time::SystemTime;
 
 use anyhow::Context;
@@ -10,9 +10,8 @@ use bytes::BufMut;
 use futures_util::{SinkExt, StreamExt};
 use httpcodec::{BodyEncoder, HttpVersion, ReasonPhrase, RequestEncoder, Response, StatusCode};
 use log::{debug, error, info};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, split};
+use tokio::io::{split, AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio_tfo::TfoStream;
 use tokio_util::codec::{Decoder, Framed};
 use url::Url;
 
@@ -33,8 +32,8 @@ use crate::transport::common::{
     Transport, TransportMetaInfo, TransportSnapshot, TransportSnapshotType, TransportStatus,
 };
 
-type HttpFramed<'a> = Framed<&'a mut TfoStream, HttpCodec>;
-type PpaassMessageFramed = Framed<TfoStream, PpaassMessageCodec>;
+type HttpFramed<'a> = Framed<&'a mut TcpStream, HttpCodec>;
+type PpaassMessageFramed = Framed<TcpStream, PpaassMessageCodec>;
 
 const HTTPS_SCHEMA: &str = "https";
 const SCHEMA_SEP: &str = "://";
@@ -51,7 +50,7 @@ pub(crate) struct HttpTransport {
 }
 
 struct InitResult {
-    client_tcp_stream: TfoStream,
+    client_tcp_stream: TcpStream,
     proxy_framed: PpaassMessageFramed,
     http_init_message: Option<Vec<u8>>,
     connect_message_id: String,
@@ -63,7 +62,7 @@ struct InitResult {
 impl Transport for HttpTransport {
     async fn start(
         &mut self,
-        client_tcp_stream: TfoStream,
+        client_tcp_stream: TcpStream,
         rsa_public_key: String,
         rsa_private_key: String,
     ) -> Result<()> {
@@ -126,7 +125,7 @@ impl HttpTransport {
 
     async fn init(
         &mut self,
-        mut client_tcp_stream: TfoStream,
+        mut client_tcp_stream: TcpStream,
         rsa_public_key: String,
         rsa_private_key: String,
     ) -> Result<Option<InitResult>> {
@@ -182,7 +181,7 @@ impl HttpTransport {
             .clone()
             .context("Proxy address did not configure properly")?;
         let mut proxy_addresses_iter = proxy_addresses.iter();
-        let proxy_stream: Option<TfoStream> = loop {
+        let proxy_stream: Option<TcpStream> = loop {
             let proxy_address = proxy_addresses_iter.next();
             match proxy_address {
                 None => break None,
@@ -195,7 +194,7 @@ impl HttpTransport {
                         Ok(address) => address,
                     };
                     let proxy_address_string: String = proxy_address.into();
-                    match TfoStream::connect(proxy_address_string.parse().unwrap()).await {
+                    match TcpStream::connect(&proxy_address_string).await {
                         Err(e) => {
                             error!(
                                 "Fail connect to proxy: [{}] because of error, http transport:[{}], error: {:#?}",
@@ -359,8 +358,7 @@ impl HttpTransport {
         let (mut proxy_framed_write, mut proxy_framed_read) = proxy_framed.split();
         self.meta_info.status = TransportStatus::Relaying;
         let user_token = self.meta_info.user_token.clone();
-        let (mut client_tcp_stream_read, mut client_tcp_stream_write) =
-            split(client_tcp_stream);
+        let (mut client_tcp_stream_read, mut client_tcp_stream_write) = split(client_tcp_stream);
         let transport_id_p2c = self.meta_info.id.clone();
         let transport_id_c2p = self.meta_info.id.clone();
         let connect_message_id_c2p = connect_message_id.clone();
@@ -401,8 +399,7 @@ impl HttpTransport {
                             "Fail to read data from agent client because of error, error: {:#?}",
                             e
                         );
-                        if let Err(e) = client_connection_closed_notifier_sender.send(true).await
-                        {
+                        if let Err(e) = client_connection_closed_notifier_sender.send(true).await {
                             error!("Fail to send client connection closed notification because of error, socks 5 transport: [{}], error: {:#?}", transport_id_c2p, e)
                         };
                         let connection_close_message_body = PpaassAgentMessagePayload::new(
@@ -548,10 +545,7 @@ impl HttpTransport {
                         }
                     }
                     PpaassProxyMessagePayloadType::TcpConnectionClose => {
-                        info!(
-                            "Http transport:[{}] close",
-                            transport_id_p2c
-                        );
+                        info!("Http transport:[{}] close", transport_id_p2c);
                         return;
                     }
                     other_payload_type => {
