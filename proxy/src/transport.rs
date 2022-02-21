@@ -686,8 +686,7 @@ impl Transport {
                 };
             }
         });
-        target_to_proxy_relay.await?;
-        proxy_to_target_relay.await?;
+        tokio::join!(target_to_proxy_relay, proxy_to_target_relay);
         Ok(())
     }
 
