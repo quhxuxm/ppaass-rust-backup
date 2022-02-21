@@ -13,8 +13,7 @@ pub struct AgentConfiguration {
     proxy_port: Option<u16>,
     buffer_size: Option<usize>,
     max_frame_size: Option<usize>,
-    master_thread_number: Option<usize>,
-    worker_thread_number: Option<usize>,
+    thread_number: Option<usize>,
     max_blocking_threads: Option<usize>,
     thread_timeout: Option<u64>,
     proxy_connect_timeout: Option<u64>,
@@ -47,11 +46,8 @@ impl AgentConfiguration {
     pub fn max_frame_size(&self) -> Option<usize> {
         self.max_frame_size
     }
-    pub fn master_thread_number(&self) -> Option<usize> {
-        self.master_thread_number
-    }
-    pub fn worker_thread_number(&self) -> Option<usize> {
-        self.worker_thread_number
+    pub fn thread_number(&self) -> Option<usize> {
+        self.thread_number
     }
 
     pub fn max_blocking_threads(&self) -> Option<usize> {

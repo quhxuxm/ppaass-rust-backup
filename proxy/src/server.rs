@@ -20,8 +20,7 @@ const AGENT_PUBLIC_KEY_PATH: &str = "AgentPublicKey.pem";
 const PROXY_PRIVATE_KEY_PATH: &str = "ProxyPrivateKey.pem";
 
 pub struct Server {
-    master_runtime: Runtime,
-    worker_runtime: Arc<Runtime>,
+    runtime: Runtime,
     configuration: Arc<ProxyConfiguration>,
 }
 
@@ -37,54 +36,31 @@ impl Server {
             Default::default(),
         )
         .with_context(|| "Fail to initialize proxy configuration file.")?;
-        let mut master_runtime_builder = tokio::runtime::Builder::new_multi_thread();
-        master_runtime_builder.worker_threads(
+        let mut runtime_builder = tokio::runtime::Builder::new_multi_thread();
+        runtime_builder.worker_threads(
             proxy_server_config
-                .master_thread_number()
+                .thread_number()
                 .with_context(|| "Can not get worker threads number from proxy configuration.")?,
         );
-        master_runtime_builder.max_blocking_threads(
+        runtime_builder.max_blocking_threads(
             proxy_server_config
                 .max_blocking_threads()
                 .with_context(|| {
                     "Can not get max blocking threads number from proxy configuration."
                 })?,
         );
-        master_runtime_builder.thread_name("proxy-master");
-        master_runtime_builder.thread_keep_alive(Duration::from_secs(
+        runtime_builder.thread_name("proxy-master");
+        runtime_builder.thread_keep_alive(Duration::from_secs(
             proxy_server_config
                 .thread_timeout()
                 .with_context(|| "Can not get thread timeout from proxy configuration.")?,
         ));
-        master_runtime_builder.enable_all();
-        let master_runtime = master_runtime_builder
+        runtime_builder.enable_all();
+        let runtime = runtime_builder
             .build()
             .with_context(|| "Fail to build init tokio runtime.")?;
-        let mut worker_runtime_builder = tokio::runtime::Builder::new_multi_thread();
-        worker_runtime_builder.worker_threads(
-            proxy_server_config
-                .worker_thread_number()
-                .with_context(|| "Can not get relay thread number from proxy configuration.")?,
-        );
-        worker_runtime_builder.max_blocking_threads(
-            proxy_server_config
-                .max_blocking_threads()
-                .with_context(|| {
-                    "Can not get max blocking threads number from proxy configuration."
-                })?,
-        );
-        worker_runtime_builder.thread_name("proxy-worker");
-        worker_runtime_builder.thread_keep_alive(Duration::from_secs(
-            proxy_server_config
-                .thread_timeout()
-                .with_context(|| "Can not get thread time out from proxy configuration.")?,
-        ));
-        worker_runtime_builder.enable_all();
-        let worker_runtime = worker_runtime_builder.build()?;
-
         Ok(Self {
-            master_runtime,
-            worker_runtime: Arc::new(worker_runtime),
+            runtime,
             configuration: Arc::new(proxy_server_config),
         })
     }
@@ -95,14 +71,14 @@ impl Server {
         let proxy_private_key = std::fs::read_to_string(Path::new(PROXY_PRIVATE_KEY_PATH))
             .expect("Fail to read proxy private key.");
         let proxy_server_config = self.configuration.clone();
-        let worker_runtime = self.worker_runtime.clone();
-        self.master_runtime.block_on(async move {
+        self.runtime.block_on(async move {
             let local_port = proxy_server_config.port().unwrap();
             let local_ip = IpAddr::from(LOCAL_ADDRESS);
             let local_address = SocketAddr::new(local_ip, local_port);
             let tcp_listener = TcpListener::bind(local_address).await.unwrap_or_else(|e| panic!("Fail to start proxy because of error, error: {:#?}", e));
             //Start to processing client protocol
             info!("Success to bind TCP server on port: [{}]", local_port);
+
             loop {
                 let (agent_stream, agent_remote_address)  =match  tcp_listener.accept().await{
                     Err(e)=>{
@@ -119,7 +95,7 @@ impl Server {
                 let agent_public_key = agent_public_key.clone();
                 let proxy_private_key = proxy_private_key.clone();
                 let proxy_server_config = proxy_server_config.clone();
-                worker_runtime.spawn(async move {
+                tokio::spawn(async move {
                     let mut transport = match Transport::new(agent_remote_address,
                         proxy_server_config){
                         Err(e)=>{
@@ -141,7 +117,7 @@ impl Server {
     }
 
     pub fn shutdown(self) {
-        self.master_runtime
+        self.runtime
             .shutdown_timeout(Duration::from_secs(20));
         info!("Graceful shutdown ppaass server.")
     }
