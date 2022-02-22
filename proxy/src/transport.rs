@@ -6,8 +6,8 @@ use std::time::{Duration, SystemTime};
 use anyhow::Context;
 use anyhow::Result;
 use bytes::BufMut;
-use futures::StreamExt;
-use futures_util::SinkExt;
+use futures::sink::SinkExt;
+use futures::stream::StreamExt;
 use log::{debug, error, info};
 use tokio::io::{split, AsyncWriteExt};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
@@ -25,8 +25,8 @@ use ppaass_common::common::{
 use ppaass_common::generate_uuid;
 
 use crate::config::{
-    ProxyConfiguration, AGENT_PUBLIC_KEY, DEFAULT_TCP_BUFFER_SIZE, DEFAULT_TCP_MAX_FRAME_SIZE,
-    DEFAULT_UDP_BUFFER_SIZE, PROXY_PRIVATE_KEY, PROXY_SERVER_CONFIG,
+    AGENT_PUBLIC_KEY, DEFAULT_TCP_BUFFER_SIZE, DEFAULT_TCP_MAX_FRAME_SIZE, DEFAULT_UDP_BUFFER_SIZE,
+    PROXY_PRIVATE_KEY, PROXY_SERVER_CONFIG,
 };
 use crate::error::PpaassProxyError;
 
