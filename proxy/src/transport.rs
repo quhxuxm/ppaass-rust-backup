@@ -8,10 +8,9 @@ use bytes::BufMut;
 use chrono::Utc;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
-use tokio::io::{split, AsyncWriteExt};
+use tokio::io::{AsyncWriteExt, split};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tokio::net::{TcpStream, UdpSocket};
-use tokio::task;
 use tokio_util::codec::Framed;
 use tracing::{debug, error, info};
 
