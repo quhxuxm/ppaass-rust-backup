@@ -8,10 +8,10 @@ use bytes::BufMut;
 use chrono::Utc;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
-use tracing::{debug, error, info};
 use tokio::io::{split, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpStream, UdpSocket};
 use tokio_util::codec::{Decoder, Framed};
+use tracing::{debug, error, info};
 
 use ppaass_common::agent::{PpaassAgentMessagePayload, PpaassAgentMessagePayloadType};
 use ppaass_common::codec::PpaassMessageCodec;
@@ -727,12 +727,11 @@ impl Socks5Transport {
         let transport_id_p2c = self.meta_info.id.clone();
         let transport_id_c2p = self.meta_info.id.clone();
         let connect_message_id_c2p = connect_message_id.clone();
-        let connect_message_id_p2c = connect_message_id.clone();
         let (
             client_connection_closed_notifier_sender,
             mut client_connection_closed_notifier_receiver,
         ) = tokio::sync::mpsc::channel::<bool>(1);
-        let client_to_proxy_relay = tokio::spawn(async move {
+        tokio::spawn(async move {
             loop {
                 let mut read_buf = Vec::<u8>::with_capacity(DEFAULT_TCP_BUFFER_SIZE);
                 let data_size = match client_tcp_stream_read.read_buf(&mut read_buf).await {
@@ -822,7 +821,7 @@ impl Socks5Transport {
                 }
             }
         });
-        let proxy_to_client_relay = tokio::spawn(async move {
+        tokio::spawn(async move {
             loop {
                 debug!(
                     "Begin the loop to read from proxy for socks 5 transport: [{}]",
@@ -897,7 +896,7 @@ impl Socks5Transport {
                 }
             }
         });
-//        tokio::join!(client_to_proxy_relay, proxy_to_client_relay);
+
         Ok(())
     }
 }

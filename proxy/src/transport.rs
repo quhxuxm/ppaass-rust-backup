@@ -489,7 +489,10 @@ impl Transport {
             agent_connection_closed_notifier_sender,
             mut agent_connection_closed_notifier_receiver,
         ) = tokio::sync::mpsc::channel::<bool>(1);
-        let proxy_to_target_relay = tokio::spawn(async move {
+        let target_to_proxy_buffer_size = PROXY_SERVER_CONFIG
+            .buffer_size()
+            .unwrap_or(DEFAULT_TCP_BUFFER_SIZE);
+        tokio::spawn(async move {
             loop {
                 info!(
                     "Begin to loop for tcp relay from proxy to target for tcp transport: [{}]",
@@ -580,10 +583,7 @@ impl Transport {
                 }
             }
         });
-        let target_to_proxy_buffer_size = PROXY_SERVER_CONFIG
-            .buffer_size()
-            .unwrap_or(DEFAULT_TCP_BUFFER_SIZE);
-        let target_to_proxy_relay = tokio::spawn(async move {
+        tokio::spawn(async move {
             loop {
                 info!(
                     "Begin the loop for tcp relay from target to proxy for tcp transport: [{}], target address: [{}]",
@@ -671,7 +671,6 @@ impl Transport {
                 };
             }
         });
-//        tokio::join!(target_to_proxy_relay, proxy_to_target_relay);
         Ok(())
     }
 

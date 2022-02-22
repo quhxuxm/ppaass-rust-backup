@@ -331,12 +331,11 @@ impl HttpTransport {
         let transport_id_p2c = self.meta_info.id.clone();
         let transport_id_c2p = self.meta_info.id.clone();
         let connect_message_id_c2p = connect_message_id.clone();
-        let connect_message_id_p2c = connect_message_id.clone();
         let (
             client_connection_closed_notifier_sender,
             mut client_connection_closed_notifier_receiver,
         ) = tokio::sync::mpsc::channel::<bool>(1);
-        let client_to_proxy_relay = tokio::spawn(async move {
+        tokio::spawn(async move {
             if let Some(message) = http_init_message {
                 let init_data_message_body = PpaassAgentMessagePayload::new(
                     source_address.clone(),
@@ -449,7 +448,7 @@ impl HttpTransport {
                 }
             }
         });
-        let proxy_to_client_relay = tokio::spawn(async move {
+        tokio::spawn(async move {
             loop {
                 debug!(
                     "Begin the loop to read from proxy for http transport: [{}]",
@@ -524,7 +523,6 @@ impl HttpTransport {
                 }
             }
         });
-//        tokio::join!(client_to_proxy_relay, proxy_to_client_relay);
         Ok(())
     }
 }
