@@ -11,6 +11,7 @@ use futures::stream::StreamExt;
 use tokio::io::{split, AsyncWriteExt};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tokio::net::{TcpStream, UdpSocket};
+use tokio::task;
 use tokio_util::codec::Framed;
 use tracing::{debug, error, info};
 
@@ -670,7 +671,7 @@ impl Transport {
                 };
             }
         });
-        tokio::join!(target_to_proxy_relay, proxy_to_target_relay);
+//        tokio::join!(target_to_proxy_relay, proxy_to_target_relay);
         Ok(())
     }
 

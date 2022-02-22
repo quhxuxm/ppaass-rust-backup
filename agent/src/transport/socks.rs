@@ -897,7 +897,7 @@ impl Socks5Transport {
                 }
             }
         });
-        tokio::join!(client_to_proxy_relay, proxy_to_client_relay);
+//        tokio::join!(client_to_proxy_relay, proxy_to_client_relay);
         Ok(())
     }
 }
