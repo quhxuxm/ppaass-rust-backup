@@ -1,7 +1,7 @@
 use std::io::{Error, ErrorKind};
 
 use bytes::{Buf, BufMut, BytesMut};
-use log::info;
+use tracing::info;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::error::PpaassAgentError;

@@ -10,7 +10,7 @@ use bytes::BufMut;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use httpcodec::{BodyEncoder, HttpVersion, ReasonPhrase, RequestEncoder, Response, StatusCode};
-use log::{debug, error, info};
+use tracing::{debug, error, info};
 use tokio::io::{split, AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_util::codec::{Decoder, Framed};

@@ -1,5 +1,5 @@
 use bytes::{Bytes, BytesMut};
-use log::debug;
+use tracing::debug;
 use lz4::block::{compress, decompress};
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 

@@ -2,9 +2,9 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use log::{error, info};
 use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
+use tracing::{error, info};
 
 use crate::config::PROXY_SERVER_CONFIG;
 use crate::transport::Transport;
@@ -17,11 +17,6 @@ pub struct Server {
 
 impl Server {
     pub fn new() -> Result<Self> {
-        log4rs::init_file(
-            PROXY_SERVER_CONFIG.log_config().as_ref().unwrap(),
-            Default::default(),
-        )
-        .with_context(|| "Fail to initialize proxy configuration file.")?;
         let mut runtime_builder = tokio::runtime::Builder::new_multi_thread();
         runtime_builder.worker_threads(
             PROXY_SERVER_CONFIG

@@ -8,7 +8,7 @@ use anyhow::Result;
 use bytes::BufMut;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
-use log::{debug, error, info};
+use tracing::{debug, error, info};
 use tokio::io::{split, AsyncWriteExt};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tokio::net::{TcpStream, UdpSocket};

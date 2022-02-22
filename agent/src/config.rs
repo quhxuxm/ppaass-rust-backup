@@ -9,7 +9,7 @@ pub const DEFAULT_TCP_MAX_FRAME_SIZE: usize = DEFAULT_TCP_BUFFER_SIZE * 2;
 pub const DEFAULT_UDP_BUFFER_SIZE: usize = 65536;
 
 lazy_static! {
-    pub(crate) static ref AGENT_SERVER_CONFIG: AgentConfiguration = {
+    pub static ref AGENT_SERVER_CONFIG: AgentConfiguration = {
         let config_file_content = std::fs::read_to_string("ppaass-agent.toml")
             .expect("Fail to read agent configuration file.");
         toml::from_str::<AgentConfiguration>(&config_file_content)
@@ -33,7 +33,8 @@ pub struct AgentConfiguration {
     thread_number: Option<usize>,
     max_blocking_threads: Option<usize>,
     thread_timeout: Option<u64>,
-    log_config: Option<String>,
+    log_dir: Option<String>,
+    log_file: Option<String>,
     compress: Option<bool>,
 }
 
@@ -72,8 +73,12 @@ impl AgentConfiguration {
         self.thread_timeout
     }
 
-    pub fn log_config(&self) -> &Option<String> {
-        &self.log_config
+    pub fn log_dir(&self) -> &Option<String> {
+        &self.log_dir
+    }
+
+    pub fn log_file(&self) -> &Option<String> {
+        &self.log_file
     }
 
     pub fn compress(&self) -> Option<bool> {

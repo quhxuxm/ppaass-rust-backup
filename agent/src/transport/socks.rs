@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use bytes::BufMut;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
-use log::{debug, error, info};
+use tracing::{debug, error, info};
 use tokio::io::{split, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpStream, UdpSocket};
 use tokio_util::codec::{Decoder, Framed};
