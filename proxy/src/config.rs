@@ -1,9 +1,27 @@
+use std::path::Path;
+
+use lazy_static::lazy_static;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 
 pub const DEFAULT_TCP_BUFFER_SIZE: usize = 128 * 1024;
 pub const DEFAULT_TCP_MAX_FRAME_SIZE: usize = DEFAULT_TCP_BUFFER_SIZE * 2;
 pub const DEFAULT_UDP_BUFFER_SIZE: usize = 65536;
+
+lazy_static! {
+    pub(crate) static ref PROXY_SERVER_CONFIG: ProxyConfiguration = {
+        let config_file_content = std::fs::read_to_string("ppaass-proxy.toml")
+            .expect("Fail to read proxy configuration file.");
+        toml::from_str::<ProxyConfiguration>(&config_file_content)
+            .expect("Fail to parse proxy configuration file")
+    };
+    pub(crate) static ref AGENT_PUBLIC_KEY: String =
+        std::fs::read_to_string(Path::new("AgentPublicKey.pem"))
+            .expect("Fail to read agent public key.");
+    pub(crate) static ref PROXY_PRIVATE_KEY: String =
+        std::fs::read_to_string(Path::new("ProxyPrivateKey.pem"))
+            .expect("Fail to read proxy private key.");
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct ProxyConfiguration {

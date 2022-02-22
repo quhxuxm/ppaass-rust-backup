@@ -22,16 +22,17 @@ use ppaass_common::proxy::PpaassProxyMessagePayload;
 
 use crate::codec::socks::{Socks5AuthCodec, Socks5ConnectCodec};
 use crate::common::ProxyAddress;
-use crate::config::{DEFAULT_TCP_BUFFER_SIZE, DEFAULT_TCP_MAX_FRAME_SIZE, DEFAULT_UDP_BUFFER_SIZE};
+use crate::config::{
+    AGENT_PRIVATE_KEY, AGENT_SERVER_CONFIG, DEFAULT_TCP_BUFFER_SIZE, DEFAULT_TCP_MAX_FRAME_SIZE,
+    DEFAULT_UDP_BUFFER_SIZE, PROXY_PUBLIC_KEY,
+};
 use crate::error::PpaassAgentError;
 use crate::protocol::socks::{
     Socks5AddrType, Socks5AuthMethod, Socks5AuthResponse, Socks5ConnectRequestType,
     Socks5ConnectResponse, Socks5ConnectResponseStatus, Socks5UdpDataRequest,
-    Socks5UdpDataResponse, UdpDiagram,
+    Socks5UdpDataResponse,
 };
-use crate::transport::common::{
-    Transport, TransportMetaInfo, TransportSnapshot, TransportSnapshotType, TransportStatus,
-};
+use crate::transport::common::{Transport, TransportMetaInfo, TransportStatus};
 
 const LOCAL_ADDRESS: [u8; 4] = [0u8; 4];
 pub(crate) struct Socks5Transport {
@@ -51,16 +52,9 @@ struct InitResult {
 
 #[async_trait]
 impl Transport for Socks5Transport {
-    async fn start(
-        &mut self,
-        client_tcp_stream: TcpStream,
-        rsa_public_key: String,
-        rsa_private_key: String,
-    ) -> Result<()> {
+    async fn start(&mut self, client_tcp_stream: TcpStream) -> Result<()> {
         let client_tcp_stream = self.authenticate(client_tcp_stream).await?;
-        let init_result = self
-            .init(client_tcp_stream, rsa_public_key, rsa_private_key)
-            .await?;
+        let init_result = self.init(client_tcp_stream).await?;
         return match init_result {
             None => Ok(()),
             Some(connect_result) => {
@@ -68,20 +62,6 @@ impl Transport for Socks5Transport {
                 Ok(())
             }
         };
-    }
-
-    fn take_snapshot(&self) -> TransportSnapshot {
-        TransportSnapshot {
-            id: self.meta_info.id.clone(),
-            snapshot_type: TransportSnapshotType::SOCKS5,
-            status: self.meta_info.status.clone(),
-            start_time: self.meta_info.start_time,
-            end_time: self.meta_info.end_time,
-            user_token: self.meta_info.user_token.clone(),
-            client_remote_address: self.meta_info.client_remote_address.clone(),
-            source_address: self.meta_info.source_address.clone(),
-            target_address: self.meta_info.target_address.clone(),
-        }
     }
 
     async fn close(&mut self) -> anyhow::Result<()> {
@@ -147,12 +127,7 @@ impl Socks5Transport {
         Ok(client_tcp_stream)
     }
 
-    async fn init(
-        &mut self,
-        mut client_tcp_stream: TcpStream,
-        rsa_public_key: String,
-        rsa_private_key: String,
-    ) -> Result<Option<InitResult>> {
+    async fn init(&mut self, mut client_tcp_stream: TcpStream) -> Result<Option<InitResult>> {
         if self.meta_info.status != TransportStatus::Authenticated {
             error!(
                 "Fail to do socks5 init process because of wrong status, socks5 transport: [{}]",
@@ -237,14 +212,13 @@ impl Socks5Transport {
                     connect_message_payload.into(),
                 );
                 let mut proxy_framed = Self::create_proxy_framed(
-                    rsa_public_key,
-                    rsa_private_key,
+                    &(*PROXY_PUBLIC_KEY),
+                    &(*AGENT_PRIVATE_KEY),
                     proxy_stream,
-                    self.meta_info
-                        .configuration
+                    AGENT_SERVER_CONFIG
                         .max_frame_size()
                         .unwrap_or(DEFAULT_TCP_MAX_FRAME_SIZE),
-                    self.meta_info.configuration.compress().unwrap_or(false),
+                    AGENT_SERVER_CONFIG.compress().unwrap_or(false),
                 );
                 if let Err(e) = proxy_framed.send(connect_message).await {
                     error!("Fail to send connect to proxy, because of error, socks5 transport: [{}], error: {:#?}", self.meta_info, e);
@@ -333,14 +307,13 @@ impl Socks5Transport {
                     Some(result) => result,
                 };
                 let mut proxy_framed = Self::create_proxy_framed(
-                    rsa_public_key,
-                    rsa_private_key,
+                    &(*PROXY_PUBLIC_KEY),
+                    &(*AGENT_PRIVATE_KEY),
                     proxy_stream,
-                    self.meta_info
-                        .configuration
+                    AGENT_SERVER_CONFIG
                         .max_frame_size()
                         .unwrap_or(DEFAULT_TCP_MAX_FRAME_SIZE),
-                    self.meta_info.configuration.compress().unwrap_or(false),
+                    AGENT_SERVER_CONFIG.compress().unwrap_or(false),
                 );
                 let udp_source_address = PpaassAddress::new(
                     source_address.host().to_vec(),
@@ -472,9 +445,7 @@ impl Socks5Transport {
     }
 
     async fn connect_to_proxy(&mut self) -> Result<Option<TcpStream>> {
-        let proxy_addresses = self
-            .meta_info
-            .configuration
+        let proxy_addresses = AGENT_SERVER_CONFIG
             .proxy_addresses()
             .clone()
             .context("Proxy address did not configure properly")?;

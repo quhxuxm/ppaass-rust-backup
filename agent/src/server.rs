@@ -1,8 +1,4 @@
-use std::fs::File;
-use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
-use std::path::Path;
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -10,45 +6,43 @@ use log::{error, info};
 use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
 
-use crate::config::AgentConfiguration;
-use crate::transport::common::{Transport, TransportMetaInfo, TransportSnapshot, TransportStatus};
+use crate::config::AGENT_SERVER_CONFIG;
+use crate::transport::common::{Transport, TransportMetaInfo};
 use crate::transport::http::HttpTransport;
 use crate::transport::socks::Socks5Transport;
 
-const CONFIG_FILE_PATH: &str = "ppaass-agent.toml";
 pub const LOCAL_ADDRESS: [u8; 4] = [0u8; 4];
 
-const AGENT_PRIVATE_KEY_PATH: &str = "AgentPrivateKey.pem";
-const PROXY_PUBLIC_KEY_PATH: &str = "ProxyPublicKey.pem";
 const SOCKS5_VERSION: u8 = 5;
 const SOCKS4_VERSION: u8 = 4;
 
 pub struct Server {
     runtime: Runtime,
-    configuration: Arc<AgentConfiguration>,
 }
 
 impl Server {
     pub fn new() -> Result<Self> {
-        let mut config_file = File::open(CONFIG_FILE_PATH)?;
-        let mut config_file_content = String::new();
-        config_file.read_to_string(&mut config_file_content)?;
-        let config = toml::from_str::<AgentConfiguration>(&config_file_content)
-            .with_context(|| "Fail to parse agent configuration file.")?;
-        log4rs::init_file(config.log_config().as_ref().unwrap(), Default::default())
-            .with_context(|| "Fail to initialize agent configuration file.")?;
+        log4rs::init_file(
+            AGENT_SERVER_CONFIG.log_config().as_ref().unwrap(),
+            Default::default(),
+        )
+        .with_context(|| "Fail to initialize agent configuration file.")?;
         let mut runtime_builder = tokio::runtime::Builder::new_multi_thread();
         runtime_builder.worker_threads(
-            config
+            AGENT_SERVER_CONFIG
                 .thread_number()
                 .with_context(|| "Can not get worker threads number from agent configuration.")?,
         );
-        runtime_builder.max_blocking_threads(config.max_blocking_threads().with_context(
-            || "Can not get max blocking threads number from agent configuration.",
-        )?);
+        runtime_builder.max_blocking_threads(
+            AGENT_SERVER_CONFIG
+                .max_blocking_threads()
+                .with_context(|| {
+                    "Can not get max blocking threads number from agent configuration."
+                })?,
+        );
         runtime_builder.thread_name("agent-master");
         runtime_builder.thread_keep_alive(Duration::from_secs(
-            config
+            AGENT_SERVER_CONFIG
                 .thread_timeout()
                 .with_context(|| "Can not get thread timeout from agent configuration.")?,
         ));
@@ -56,39 +50,12 @@ impl Server {
         let runtime = runtime_builder
             .build()
             .with_context(|| "Fail to build init tokio runtime.")?;
-        Ok(Self {
-            runtime,
-            configuration: Arc::new(config),
-        })
+        Ok(Self { runtime })
     }
 
     pub fn run(&self) -> Result<()> {
-        let agent_private_key = std::fs::read_to_string(Path::new(AGENT_PRIVATE_KEY_PATH))
-            .expect("Fail to read agent private key.");
-        let proxy_public_key = std::fs::read_to_string(Path::new(PROXY_PUBLIC_KEY_PATH))
-            .expect("Fail to read proxy public key.");
-        let config = self.configuration.clone();
-        let (transport_info_sender, mut transport_info_receiver) =
-            tokio::sync::mpsc::channel::<TransportSnapshot>(32);
-        self.runtime.spawn(async move {
-            loop {
-                let transport_snapshot = transport_info_receiver.recv().await;
-                match transport_snapshot {
-                    None => {
-                        continue;
-                    }
-                    Some(snapshot) => {
-                        if snapshot.status == TransportStatus::Closed {
-                            info!("Remove closed transport, transport: [{}]", snapshot.id);
-                            continue;
-                        }
-                        info!("Update transport, transport: [{}]", snapshot.id);
-                    }
-                }
-            }
-        });
         self.runtime.block_on(async move {
-            let local_port = config.port().unwrap();
+            let local_port = AGENT_SERVER_CONFIG.port().unwrap();
             let local_ip = IpAddr::from(LOCAL_ADDRESS);
             let local_address = SocketAddr::new(local_ip, local_port);
             let tcp_listener = TcpListener::bind(local_address).await.unwrap_or_else(|e| panic!("Fail to start agent because of error, error: {:#?}", e));
@@ -107,10 +74,6 @@ impl Server {
                         r
                     }
                 };
-                let transport_info_sender = transport_info_sender.clone();
-                let agent_private_key = agent_private_key.clone();
-                let proxy_public_key = proxy_public_key.clone();
-                let config = config.clone();
                 tokio::spawn(async move {
                     let mut protocol_buf: [u8; 1] = [0; 1];
                     let read_result = client_stream.peek(&mut protocol_buf).await;
@@ -127,7 +90,7 @@ impl Server {
                         error!("Do not support socks 4 connection, client: {}", client_remote_addr);
                         return;
                     }
-                    let transport_meta_info=match  TransportMetaInfo::new(config.clone(), transport_info_sender.clone()){
+                    let transport_meta_info=match  TransportMetaInfo::new(){
                         Err(e)=>{
                             error!("Fail to create socks5 transport because of error, error: {:#?}",e );
                             return;
@@ -138,7 +101,7 @@ impl Server {
                         let socks5_transport_id = transport_meta_info.id.clone();
                         let mut socks5_transport = Socks5Transport::new(transport_meta_info);
                         info!("Receive a client stream from: [{}], assign it to socks5 transport: [{}].", client_remote_addr, socks5_transport_id);
-                        if let Err(e) = socks5_transport.start(client_stream.into(), proxy_public_key, agent_private_key).await {
+                        if let Err(e) = socks5_transport.start(client_stream.into()).await {
                             error!("Fail to start agent socks5 transport because of error, transport:[{}], agent address:[{}], error: {:#?}",socks5_transport_id,
                             client_remote_addr,e);
                         }
@@ -152,7 +115,7 @@ impl Server {
                     let http_transport_id = transport_meta_info.id.clone();
                     let mut http_transport = HttpTransport::new(transport_meta_info);
                     info!("Receive a client stream from: [{}], assign it to http transport: [{}].", client_remote_addr, http_transport_id);
-                    if let Err(e) = http_transport.start(client_stream.into(), proxy_public_key, agent_private_key).await {
+                    if let Err(e) = http_transport.start(client_stream.into()).await {
                         error!("Fail to start agent http transport because of error, transport:[{}], agent address:[{}], error: {:#?}",http_transport_id,
                             client_remote_addr,e);
                     }
@@ -168,8 +131,7 @@ impl Server {
     }
 
     pub fn shutdown(self) {
-        self.runtime
-            .shutdown_timeout(Duration::from_secs(20));
+        self.runtime.shutdown_timeout(Duration::from_secs(20));
         info!("Graceful shutdown ppaass server.")
     }
 }

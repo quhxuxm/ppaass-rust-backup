@@ -17,8 +17,8 @@ pub struct PpaassMessageCodec {
 
 impl PpaassMessageCodec {
     pub fn new(
-        public_key: String,
-        private_key: String,
+        public_key: &'static str,
+        private_key: &'static str,
         max_frame_size: usize,
         compress: bool,
     ) -> Self {

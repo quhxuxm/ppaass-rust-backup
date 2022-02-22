@@ -17,13 +17,13 @@ const RSA_BIT_SIZE: usize = 2048;
 #[derive(Debug)]
 pub(crate) struct RsaCrypto {
     /// The private used to do decryption
-    private_key: String,
+    private_key: &'static str,
     /// The public used to do encryption
-    public_key: String,
+    public_key: &'static str,
 }
 
 impl RsaCrypto {
-    pub fn new(public_key: String, private_key: String) -> Self {
+    pub fn new(public_key: &'static str, private_key: &'static str) -> Self {
         Self {
             public_key,
             private_key,
@@ -31,7 +31,7 @@ impl RsaCrypto {
     }
 
     pub(crate) fn encrypt(&self, target: &[u8]) -> Result<Vec<u8>, PpaassCommonError> {
-        let public_key = RsaPublicKey::from_public_key_pem(self.public_key.as_str()).map_err(|source| PpaassCommonError::FailToParseRsaKey { source })?;
+        let public_key = RsaPublicKey::from_public_key_pem(self.public_key).map_err(|source| PpaassCommonError::FailToParseRsaKey { source })?;
         let mut rng = OsRng;
         public_key.encrypt(
             &mut rng,
@@ -41,7 +41,7 @@ impl RsaCrypto {
     }
 
     pub(crate) fn decrypt(&self, target: &[u8]) -> Result<Vec<u8>, PpaassCommonError> {
-        let private_key = RsaPrivateKey::from_pkcs8_pem(self.private_key.as_str()).map_err(|source| PpaassCommonError::FailToParseRsaKey { source })?;
+        let private_key = RsaPrivateKey::from_pkcs8_pem(self.private_key).map_err(|source| PpaassCommonError::FailToParseRsaKey { source })?;
         private_key.decrypt(PaddingScheme::PKCS1v15Encrypt, target).map_err(|source| PpaassCommonError::FailToEncryptDataWithRsa { source })
     }
 }

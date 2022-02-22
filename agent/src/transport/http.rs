@@ -26,11 +26,12 @@ use ppaass_common::proxy::{PpaassProxyMessagePayload, PpaassProxyMessagePayloadT
 
 use crate::codec::http::HttpCodec;
 use crate::common::ProxyAddress;
-use crate::config::{AgentConfiguration, DEFAULT_TCP_BUFFER_SIZE, DEFAULT_TCP_MAX_FRAME_SIZE};
-use crate::error::PpaassAgentError;
-use crate::transport::common::{
-    Transport, TransportMetaInfo, TransportSnapshot, TransportSnapshotType, TransportStatus,
+use crate::config::{
+    AGENT_PRIVATE_KEY, AGENT_SERVER_CONFIG, DEFAULT_TCP_BUFFER_SIZE, DEFAULT_TCP_MAX_FRAME_SIZE,
+    PROXY_PUBLIC_KEY,
 };
+use crate::error::PpaassAgentError;
+use crate::transport::common::{Transport, TransportMetaInfo, TransportStatus};
 
 type HttpFramed<'a> = Framed<&'a mut TcpStream, HttpCodec>;
 type PpaassMessageFramed = Framed<TcpStream, PpaassMessageCodec>;
@@ -60,15 +61,8 @@ struct InitResult {
 
 #[async_trait]
 impl Transport for HttpTransport {
-    async fn start(
-        &mut self,
-        client_tcp_stream: TcpStream,
-        rsa_public_key: String,
-        rsa_private_key: String,
-    ) -> Result<()> {
-        let init_result = self
-            .init(client_tcp_stream, rsa_public_key, rsa_private_key)
-            .await?;
+    async fn start(&mut self, client_tcp_stream: TcpStream) -> Result<()> {
+        let init_result = self.init(client_tcp_stream).await?;
         return match init_result {
             None => Ok(()),
             Some(init_result) => {
@@ -76,20 +70,6 @@ impl Transport for HttpTransport {
                 Ok(())
             }
         };
-    }
-
-    fn take_snapshot(&self) -> TransportSnapshot {
-        TransportSnapshot {
-            id: self.meta_info.id.clone(),
-            snapshot_type: TransportSnapshotType::HTTP,
-            status: self.meta_info.status.clone(),
-            start_time: self.meta_info.start_time,
-            end_time: self.meta_info.end_time,
-            user_token: self.meta_info.user_token.clone(),
-            client_remote_address: self.meta_info.client_remote_address.clone(),
-            source_address: self.meta_info.source_address.clone(),
-            target_address: self.meta_info.target_address.clone(),
-        }
     }
 
     async fn close(&mut self) -> Result<()> {
@@ -109,7 +89,7 @@ impl HttpTransport {
         Self { meta_info }
     }
 
-    async fn send_error_to_client<'a>(mut client_http_framed: HttpFramed<'a>) -> Result<()> {
+    async fn send_error_to_client(mut client_http_framed: HttpFramed<'_>) -> Result<()> {
         let bad_request_status_code = StatusCode::new(ERROR_CODE).unwrap();
         let error_response_reason = ReasonPhrase::new(ERROR_REASON).unwrap();
         let connect_error_response = Response::new(
@@ -123,12 +103,7 @@ impl HttpTransport {
         Ok(())
     }
 
-    async fn init(
-        &mut self,
-        mut client_tcp_stream: TcpStream,
-        rsa_public_key: String,
-        rsa_private_key: String,
-    ) -> Result<Option<InitResult>> {
+    async fn init(&mut self, mut client_tcp_stream: TcpStream) -> Result<Option<InitResult>> {
         let transport_id = self.meta_info.id.clone();
         let client_address = client_tcp_stream.peer_addr()?;
         let http_codec = HttpCodec::default();
@@ -174,9 +149,7 @@ impl HttpTransport {
             }
             Some(h) => h.to_string(),
         };
-        let proxy_addresses = self
-            .meta_info
-            .configuration
+        let proxy_addresses = AGENT_SERVER_CONFIG
             .proxy_addresses()
             .clone()
             .context("Proxy address did not configure properly")?;
@@ -234,14 +207,13 @@ impl HttpTransport {
         };
         let client_port = client_address.port();
         let mut proxy_framed = Self::create_proxy_framed(
-            rsa_public_key,
-            rsa_private_key,
+            &*PROXY_PUBLIC_KEY,
+            &*AGENT_PRIVATE_KEY,
             proxy_stream,
-            self.meta_info
-                .configuration
+            AGENT_SERVER_CONFIG
                 .max_frame_size()
                 .unwrap_or(DEFAULT_TCP_MAX_FRAME_SIZE),
-            self.meta_info.configuration.compress().unwrap_or(false),
+            AGENT_SERVER_CONFIG.compress().unwrap_or(false),
         );
         let source_address = PpaassAddress::new(client_ip, client_port, PpaassAddressType::IpV4);
         let target_address: PpaassAddress =

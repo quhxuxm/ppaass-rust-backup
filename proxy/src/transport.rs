@@ -25,8 +25,8 @@ use ppaass_common::common::{
 use ppaass_common::generate_uuid;
 
 use crate::config::{
-    ProxyConfiguration, DEFAULT_TCP_BUFFER_SIZE, DEFAULT_TCP_MAX_FRAME_SIZE,
-    DEFAULT_UDP_BUFFER_SIZE,
+    ProxyConfiguration, AGENT_PUBLIC_KEY, DEFAULT_TCP_BUFFER_SIZE, DEFAULT_TCP_MAX_FRAME_SIZE,
+    DEFAULT_UDP_BUFFER_SIZE, PROXY_PRIVATE_KEY, PROXY_SERVER_CONFIG,
 };
 use crate::error::PpaassProxyError;
 
@@ -50,7 +50,6 @@ pub(crate) struct Transport {
     agent_remote_address: SocketAddr,
     source_address: Option<PpaassAddress>,
     target_address: Option<PpaassAddress>,
-    configuration: Arc<ProxyConfiguration>,
 }
 
 impl Debug for Transport {
@@ -81,10 +80,7 @@ struct InitResult {
 }
 
 impl Transport {
-    pub fn new(
-        agent_remote_address: SocketAddr,
-        configuration: Arc<ProxyConfiguration>,
-    ) -> Result<Self> {
+    pub fn new(agent_remote_address: SocketAddr) -> Result<Self> {
         Ok(Self {
             id: generate_uuid(),
             status: TransportStatus::New,
@@ -98,7 +94,6 @@ impl Transport {
             agent_remote_address,
             source_address: None,
             target_address: None,
-            configuration,
         })
     }
 
@@ -109,24 +104,19 @@ impl Transport {
     /// * Relaying status: A transport start to relay data.
     /// * Closing status: A transport is closing.
     /// * Closed status: A transport is closed.
-    pub async fn start(
-        &mut self,
-        agent_stream: TcpStream,
-        rsa_public_key: impl Into<String>,
-        rsa_private_key: impl Into<String>,
-    ) -> Result<()> {
+    pub async fn start(&mut self, agent_stream: TcpStream) -> Result<()> {
         let ppaass_message_codec = PpaassMessageCodec::new(
-            rsa_public_key.into(),
-            rsa_private_key.into(),
-            self.configuration
+            &(*AGENT_PUBLIC_KEY),
+            &(*PROXY_PRIVATE_KEY),
+            PROXY_SERVER_CONFIG
                 .max_frame_size()
                 .unwrap_or(DEFAULT_TCP_MAX_FRAME_SIZE),
-            self.configuration.compress().unwrap_or(false),
+            PROXY_SERVER_CONFIG.compress().unwrap_or(false),
         );
         let agent_stream_framed = Framed::with_capacity(
             agent_stream,
             ppaass_message_codec,
-            self.configuration
+            PROXY_SERVER_CONFIG
                 .buffer_size()
                 .unwrap_or(DEFAULT_TCP_BUFFER_SIZE),
         );
@@ -408,8 +398,7 @@ impl Transport {
                 }
             }
         });
-        let target_to_proxy_buffer_size = self
-            .configuration
+        let target_to_proxy_buffer_size = PROXY_SERVER_CONFIG
             .buffer_size()
             .unwrap_or(DEFAULT_TCP_BUFFER_SIZE);
         let source_address_for_target_to_proxy_relay = match self.source_address.clone().take() {
@@ -594,8 +583,7 @@ impl Transport {
                 }
             }
         });
-        let target_to_proxy_buffer_size = self
-            .configuration
+        let target_to_proxy_buffer_size = PROXY_SERVER_CONFIG
             .buffer_size()
             .unwrap_or(DEFAULT_TCP_BUFFER_SIZE);
         let target_to_proxy_relay = tokio::spawn(async move {
