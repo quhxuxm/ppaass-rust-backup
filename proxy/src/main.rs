@@ -1,11 +1,9 @@
 use anyhow::Result;
 use chrono::Local;
-use tracing::{error, info, Level};
+use tracing::{error, info};
 use tracing_subscriber::fmt::format::Writer;
 use tracing_subscriber::fmt::time::FormatTime;
-use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::Registry;
 
 use proxy::config::PROXY_SERVER_CONFIG;
 use proxy::server::Server;
