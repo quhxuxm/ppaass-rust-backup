@@ -1,18 +1,18 @@
 use std::fmt::{Debug, Display, Formatter};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
 
 use anyhow::Context;
 use anyhow::Result;
 use bytes::BufMut;
+use chrono::Utc;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
-use tracing::{debug, error, info};
 use tokio::io::{split, AsyncWriteExt};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tokio::net::{TcpStream, UdpSocket};
 use tokio_util::codec::Framed;
+use tracing::{debug, error, info};
 
 use ppaass_common::agent::{
     PpaassAgentMessagePayload, PpaassAgentMessagePayloadSplitResult, PpaassAgentMessagePayloadType,
@@ -44,8 +44,8 @@ pub(crate) enum TransportStatus {
 pub(crate) struct Transport {
     id: String,
     status: TransportStatus,
-    start_time: u128,
-    end_time: Option<u128>,
+    start_time: i64,
+    end_time: Option<i64>,
     user_token: Option<Vec<u8>>,
     agent_remote_address: SocketAddr,
     source_address: Option<PpaassAddress>,
@@ -84,11 +84,7 @@ impl Transport {
         Ok(Self {
             id: generate_uuid(),
             status: TransportStatus::New,
-            start_time: {
-                SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)?
-                    .as_millis()
-            },
+            start_time: Utc::now().timestamp_millis(),
             end_time: None,
             user_token: None,
             agent_remote_address,
@@ -685,10 +681,10 @@ impl Transport {
     pub fn status(&self) -> TransportStatus {
         self.status
     }
-    pub fn start_time(&self) -> u128 {
+    pub fn start_time(&self) -> i64 {
         self.start_time
     }
-    pub fn end_time(&self) -> Option<u128> {
+    pub fn end_time(&self) -> Option<i64> {
         self.end_time
     }
     pub fn user_token(&self) -> &Option<Vec<u8>> {
@@ -707,15 +703,7 @@ impl Transport {
 
 impl Drop for Transport {
     fn drop(&mut self) {
-        self.end_time = {
-            Some(
-                match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
-                    Err(e) => Duration::default(),
-                    Ok(r) => r,
-                }
-                .as_millis(),
-            )
-        };
+        self.end_time = Some(Utc::now().timestamp_millis());
         self.status = TransportStatus::Closed;
         info!("Graceful close agent tcp transport: [{}]", self.id);
     }

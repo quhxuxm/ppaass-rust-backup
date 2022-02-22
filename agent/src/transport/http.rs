@@ -1,5 +1,4 @@
 use std::net::IpAddr;
-use std::time::SystemTime;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -7,13 +6,14 @@ use async_trait::async_trait;
 use bytecodec::bytes::BytesEncoder;
 use bytecodec::EncodeExt;
 use bytes::BufMut;
+use chrono::Utc;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use httpcodec::{BodyEncoder, HttpVersion, ReasonPhrase, RequestEncoder, Response, StatusCode};
-use tracing::{debug, error, info};
 use tokio::io::{split, AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_util::codec::{Decoder, Framed};
+use tracing::{debug, error, info};
 use url::Url;
 
 use ppaass_common::agent::{PpaassAgentMessagePayload, PpaassAgentMessagePayloadType};
@@ -75,11 +75,7 @@ impl Transport for HttpTransport {
 
     async fn close(&mut self) -> Result<()> {
         self.meta_info.status = TransportStatus::Closed;
-        self.meta_info.end_time = Some(
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)?
-                .as_millis(),
-        );
+        self.meta_info.end_time = Some(Utc::now().timestamp_millis());
         info!("Graceful close http transport [{}]", self.meta_info);
         Ok(())
     }

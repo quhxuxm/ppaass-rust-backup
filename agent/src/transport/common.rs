@@ -5,6 +5,7 @@ use std::time::SystemTime;
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use chrono::Utc;
 use tokio::net::TcpStream;
 use tokio_util::codec::{Decoder, Framed};
 
@@ -34,8 +35,8 @@ pub(crate) enum TransportSnapshotType {
 pub(crate) struct TransportMetaInfo {
     pub id: String,
     pub status: TransportStatus,
-    pub start_time: u128,
-    pub end_time: Option<u128>,
+    pub start_time: i64,
+    pub end_time: Option<i64>,
     pub user_token: Vec<u8>,
     pub client_remote_address: Option<SocketAddr>,
     pub source_address: Option<PpaassAddress>,
@@ -51,11 +52,7 @@ impl TransportMetaInfo {
         Ok(Self {
             id: generate_uuid(),
             status: TransportStatus::New,
-            start_time: {
-                SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)?
-                    .as_millis()
-            },
+            start_time: Utc::now().timestamp_millis(),
             end_time: None,
             user_token: user_token.into_bytes(),
             client_remote_address: None,

@@ -5,6 +5,7 @@ use std::time::SystemTime;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use bytes::BufMut;
+use chrono::Utc;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use tracing::{debug, error, info};
@@ -67,11 +68,7 @@ impl Transport for Socks5Transport {
 
     async fn close(&mut self) -> anyhow::Result<()> {
         self.meta_info.status = TransportStatus::Closed;
-        self.meta_info.end_time = Some(
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)?
-                .as_millis(),
-        );
+        self.meta_info.end_time = Some(Utc::now().timestamp_millis());
         info!("Graceful close socks5 transport [{}]", self.meta_info.id);
         Ok(())
     }
