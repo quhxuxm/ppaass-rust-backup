@@ -1,7 +1,8 @@
+use std::path::Path;
+
 use lazy_static::lazy_static;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
-use std::path::Path;
 
 pub const DEFAULT_TCP_BUFFER_SIZE: usize = 128 * 1024;
 pub const DEFAULT_TCP_MAX_FRAME_SIZE: usize = DEFAULT_TCP_BUFFER_SIZE * 2;
@@ -17,7 +18,6 @@ lazy_static! {
     pub(crate) static ref AGENT_PRIVATE_KEY: String =
         std::fs::read_to_string(Path::new("AgentPrivateKey.pem"))
             .expect("Fail to read agent private key.");
-
     pub(crate) static ref PROXY_PUBLIC_KEY: String =
         std::fs::read_to_string(Path::new("ProxyPublicKey.pem"))
             .expect("Fail to read proxy public key.");
@@ -33,9 +33,6 @@ pub struct AgentConfiguration {
     thread_number: Option<usize>,
     max_blocking_threads: Option<usize>,
     thread_timeout: Option<u64>,
-    proxy_connect_timeout: Option<u64>,
-    proxy_connection_max_idle: Option<u64>,
-    client_connection_max_idle: Option<u64>,
     log_config: Option<String>,
     compress: Option<bool>,
 }
@@ -75,21 +72,10 @@ impl AgentConfiguration {
         self.thread_timeout
     }
 
-    pub fn proxy_connect_timeout(&self) -> Option<u64> {
-        self.proxy_connect_timeout
-    }
-
     pub fn log_config(&self) -> &Option<String> {
         &self.log_config
     }
 
-    pub fn proxy_connection_max_idle(&self) -> Option<u64> {
-        self.proxy_connection_max_idle
-    }
-
-    pub fn client_connection_max_idle(&self) -> Option<u64> {
-        self.client_connection_max_idle
-    }
     pub fn compress(&self) -> Option<bool> {
         self.compress
     }

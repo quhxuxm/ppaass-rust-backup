@@ -32,8 +32,6 @@ pub(crate) struct ProxyConfiguration {
     max_blocking_threads: Option<usize>,
     thread_timeout: Option<u64>,
     target_connect_timeout: Option<u64>,
-    agent_connection_max_idle: Option<u64>,
-    target_connection_max_idle: Option<u64>,
     log_config: Option<String>,
     compress: Option<bool>,
 }
@@ -69,14 +67,6 @@ impl ProxyConfiguration {
 
     pub fn max_blocking_threads(&self) -> Option<usize> {
         self.max_blocking_threads
-    }
-
-    pub fn agent_connection_max_idle(&self) -> Option<u64> {
-        self.agent_connection_max_idle
-    }
-
-    pub fn target_connection_max_idle(&self) -> Option<u64> {
-        self.target_connection_max_idle
     }
 
     pub fn compress(&self) -> Option<bool> {
