@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use bytes::{BufMut, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use crypto::{aessafe, blowfish};
 use crypto::symmetriccipher::{BlockDecryptor, BlockEncryptor};
 use rand::rngs::OsRng;
@@ -46,7 +46,7 @@ impl RsaCrypto {
     }
 }
 
-pub(crate) fn encrypt_with_aes(encryption_token: &[u8], target: &[u8]) -> Vec<u8> {
+pub(crate) fn encrypt_with_aes(encryption_token: &[u8], target: &[u8]) -> Bytes {
     let mut result = BytesMut::new();
     let aes_encryptor = aessafe::AesSafe256Encryptor::new(encryption_token);
     let target_chunks = target.chunks(AES_CHUNK_LENGTH);
@@ -59,10 +59,10 @@ pub(crate) fn encrypt_with_aes(encryption_token: &[u8], target: &[u8]) -> Vec<u8
         aes_encryptor.encrypt_block(chunk_to_encrypt, chunk_encrypted);
         result.put_slice(chunk_encrypted);
     }
-    result.to_vec()
+    result.into()
 }
 
-pub(crate) fn decrypt_with_aes(encryption_token: &[u8], target: &[u8]) -> Vec<u8> {
+pub(crate) fn decrypt_with_aes(encryption_token: &[u8], target: &[u8]) -> Bytes {
     let mut result = BytesMut::new();
     let aes_decryptor = aessafe::AesSafe256Decryptor::new(encryption_token);
     let target_chunks = target.chunks(AES_CHUNK_LENGTH);
@@ -75,10 +75,10 @@ pub(crate) fn decrypt_with_aes(encryption_token: &[u8], target: &[u8]) -> Vec<u8
         aes_decryptor.decrypt_block(chunk_to_decrypt, chunk_decrypted);
         result.put_slice(chunk_decrypted);
     }
-    result.to_vec()
+    result.into()
 }
 
-pub(crate) fn encrypt_with_blowfish(encryption_token: &[u8], target: &[u8]) -> Vec<u8> {
+pub(crate) fn encrypt_with_blowfish(encryption_token: &[u8], target: &[u8]) -> Bytes {
     let mut result = BytesMut::new();
     let blowfish_encryption = blowfish::Blowfish::new(encryption_token);
     let target_chunks = target.chunks(BLOWFISH_CHUNK_LENGTH);
@@ -91,10 +91,10 @@ pub(crate) fn encrypt_with_blowfish(encryption_token: &[u8], target: &[u8]) -> V
         blowfish_encryption.encrypt_block(chunk_to_encrypt, chunk_encrypted);
         result.put_slice(chunk_encrypted);
     }
-    result.to_vec()
+    result.into()
 }
 
-pub(crate) fn decrypt_with_blowfish(encryption_token: &[u8], target: &[u8]) -> Vec<u8> {
+pub(crate) fn decrypt_with_blowfish(encryption_token: &[u8], target: &[u8]) -> Bytes {
     let mut result = BytesMut::new();
     let blowfish_encryption = blowfish::Blowfish::new(encryption_token);
     let target_chunks = target.chunks(BLOWFISH_CHUNK_LENGTH);
@@ -107,5 +107,5 @@ pub(crate) fn decrypt_with_blowfish(encryption_token: &[u8], target: &[u8]) -> V
         blowfish_encryption.decrypt_block(chunk_to_decrypt, chunk_decrypted);
         result.put_slice(chunk_decrypted);
     }
-    result.to_vec()
+    result.into()
 }

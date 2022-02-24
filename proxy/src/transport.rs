@@ -1,4 +1,5 @@
 use std::fmt::{Debug, Display, Formatter};
+use bytes::{Buf, Bytes, BytesMut};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
@@ -191,7 +192,7 @@ impl Transport {
                             agent_message_source_address.clone(),
                             agent_message_target_address.clone(),
                             PpaassProxyMessagePayloadType::TcpConnectFail,
-                            vec![],
+                            Bytes::new(),
                         );
                         let tcp_connect_fail_message =
                             PpaassMessage::new_with_random_encryption_type(
@@ -222,7 +223,7 @@ impl Transport {
                     agent_message_source_address.clone(),
                     agent_message_target_address.clone(),
                     PpaassProxyMessagePayloadType::TcpConnectSuccess,
-                    vec![],
+                    Bytes::new(),
                 );
                 let tcp_connect_success_message = PpaassMessage::new_with_random_encryption_type(
                     agent_message_id.clone(),
@@ -263,7 +264,7 @@ impl Transport {
                     //For udp associate the target address is useless, just return a fake one
                     PpaassAddress::new(vec![0, 0, 0, 0], 0, PpaassAddressType::IpV4),
                     PpaassProxyMessagePayloadType::UdpAssociateSuccess,
-                    vec![],
+                    Bytes::new(),
                 );
                 let udp_associate_success_message = PpaassMessage::new_with_random_encryption_type(
                     agent_message_id.clone(),
@@ -378,7 +379,7 @@ impl Transport {
                         };
                         if let Err(e) = target_udp_socket_for_proxy_to_target_relay
                             .send_to(
-                                agent_message_payload_data.as_slice(),
+                                agent_message_payload_data.chunk(),
                                 target_udp_socket_address,
                             )
                             .await
@@ -417,7 +418,7 @@ impl Transport {
                     Ok(r) => r,
                 };
                 let (data_size, target_origin_address) = udp_relay_recv_result;
-                let udp_data_diagram = buf[..data_size].to_vec();
+                let udp_data_diagram =Bytes::from(buf[..data_size].to_vec());
                 let target_address: PpaassAddress = target_origin_address.into();
                 let udp_data_message_payload = PpaassProxyMessagePayload::new(
                     //For udp data the source address is the client address to accept the udp package
@@ -550,7 +551,7 @@ impl Transport {
                 match agent_message_payload_type {
                     PpaassAgentMessagePayloadType::TcpData => {
                         if let Err(e) = target_write
-                            .write(agent_message_payload_data.as_slice())
+                            .write(agent_message_payload_data.chunk())
                             .await
                         {
                             error!("Fail to send agent data from proxy to target because of error, transport:[{}], target address: [{}], error: {:#?}",
@@ -592,7 +593,7 @@ impl Transport {
                     error!("Agent connection closed, transport:[{}]", transport_id_t2p);
                     return;
                 }
-                let mut target_read_buf = Vec::<u8>::with_capacity(target_to_proxy_buffer_size);
+                let mut target_read_buf = BytesMut::with_capacity(target_to_proxy_buffer_size);
                 let read_size = match target_read.read_buf(&mut target_read_buf).await {
                     Err(e) => {
                         error!("Fail to read target data because of error, tcp transport: [{}], target address: [{}], error: {:#?}",
@@ -610,7 +611,7 @@ impl Transport {
                         source_address_t2p.clone(),
                         target_address_t2p.clone(),
                         PpaassProxyMessagePayloadType::TcpConnectionClose,
-                        target_read_buf,
+                        target_read_buf.into(),
                     );
                     let tcp_connection_close_message =
                         PpaassMessage::new_with_random_encryption_type(
@@ -641,14 +642,14 @@ impl Transport {
                     "Receive target data for tcp transport: [{}], target address: [{}], data:\n{}\n",
                     transport_id_t2p,
                     target_address_t2p,
-                    String::from_utf8(target_read_buf.clone())
+                    String::from_utf8(target_read_buf.to_vec())
                         .unwrap_or_else(|e| format!("{:#?}", e))
                 );
                 let tcp_data_success_message_payload = PpaassProxyMessagePayload::new(
                     source_address_t2p.clone(),
                     target_address_t2p.clone(),
                     PpaassProxyMessagePayloadType::TcpData,
-                    target_read_buf,
+                    target_read_buf.into(),
                 );
                 let tcp_data_success_message = PpaassMessage::new_with_random_encryption_type(
                     "".to_string(),

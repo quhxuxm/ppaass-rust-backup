@@ -5,7 +5,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bytecodec::bytes::BytesEncoder;
 use bytecodec::EncodeExt;
-use bytes::BufMut;
+use bytes::{BufMut, Bytes};
 use chrono::Utc;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
@@ -54,7 +54,7 @@ pub(crate) struct HttpTransport {
 struct InitResult {
     client_tcp_stream: TcpStream,
     proxy_framed: PpaassMessageFramed,
-    http_init_message: Option<Vec<u8>>,
+    http_init_message: Option<Bytes>,
     connect_message_id: String,
     source_address: PpaassAddress,
     target_address: PpaassAddress,
@@ -219,7 +219,7 @@ impl HttpTransport {
             source_address.clone(),
             target_address.clone(),
             PpaassAgentMessagePayloadType::TcpConnect,
-            vec![],
+            Bytes::new(),
         );
         let connect_message = PpaassMessage::new(
             "".to_string(),
@@ -285,7 +285,10 @@ impl HttpTransport {
                 return Ok(Some(InitResult {
                     client_tcp_stream,
                     proxy_framed,
-                    http_init_message,
+                    http_init_message: match http_init_message {
+                        Some(v) => Some(v.into()),
+                        None => Some(Bytes::new()),
+                    },
                     connect_message_id: proxy_message_id,
                     source_address,
                     target_address,
@@ -374,7 +377,7 @@ impl HttpTransport {
                             source_address.clone(),
                             target_address.clone(),
                             PpaassAgentMessagePayloadType::TcpConnectionClose,
-                            vec![],
+                            Bytes::new(),
                         );
                         let connection_close_message = PpaassMessage::new(
                             connect_message_id_c2p.clone(),
@@ -400,7 +403,7 @@ impl HttpTransport {
                         source_address.clone(),
                         target_address.clone(),
                         PpaassAgentMessagePayloadType::TcpConnectionClose,
-                        read_buf,
+                        read_buf.into(),
                     );
                     let connection_close_message = PpaassMessage::new(
                         connect_message_id_c2p.clone(),
@@ -423,7 +426,7 @@ impl HttpTransport {
                     source_address.clone(),
                     target_address.clone(),
                     PpaassAgentMessagePayloadType::TcpData,
-                    read_buf,
+                    read_buf.into(),
                 );
                 let data_message = PpaassMessage::new(
                     connect_message_id_c2p.clone(),

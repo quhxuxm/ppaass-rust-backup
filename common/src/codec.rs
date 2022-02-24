@@ -1,7 +1,7 @@
-use bytes::{Bytes, BytesMut};
-use tracing::debug;
+use bytes::{Buf, Bytes, BytesMut};
 use lz4::block::{compress, decompress};
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
+use tracing::debug;
 
 use crate::common::{PpaassMessage, PpaassMessagePayloadEncryptionType, PpaassMessageSplitResult};
 use crate::crypto::{
@@ -71,7 +71,7 @@ impl Decoder for PpaassMessageCodec {
                     .decrypt(rsa_encrypted_payload_encryption_token.as_slice())?;
                 decrypt_with_blowfish(
                     original_encryption_token.as_slice(),
-                    encrypted_payload.as_slice(),
+                    encrypted_payload.chunk(),
                 )
             }
             PpaassMessagePayloadEncryptionType::Aes => {
@@ -80,7 +80,7 @@ impl Decoder for PpaassMessageCodec {
                     .decrypt(rsa_encrypted_payload_encryption_token.as_slice())?;
                 decrypt_with_aes(
                     original_encryption_token.as_slice(),
-                    encrypted_payload.as_slice(),
+                    encrypted_payload.chunk(),
                 )
             }
         };
@@ -122,10 +122,10 @@ impl Encoder<PpaassMessage> for PpaassMessageCodec {
         let encrypted_payload = match payload_encryption_type {
             PpaassMessagePayloadEncryptionType::Plain => payload,
             PpaassMessagePayloadEncryptionType::Blowfish => {
-                encrypt_with_blowfish(payload_encryption_token.as_slice(), payload.as_slice())
+                encrypt_with_blowfish(payload_encryption_token.as_slice(), payload.chunk())
             }
             PpaassMessagePayloadEncryptionType::Aes => {
-                encrypt_with_aes(payload_encryption_token.as_slice(), payload.as_slice())
+                encrypt_with_aes(payload_encryption_token.as_slice(), payload.chunk())
             }
         };
         let encrypted_message = PpaassMessage::new_with_random_encryption_type(
@@ -138,14 +138,14 @@ impl Encoder<PpaassMessage> for PpaassMessageCodec {
             "Encode ppaass message to output(encrypted): {:?}",
             encrypted_message
         );
-        let result_bytes: Vec<u8> = encrypted_message.into();
+        let result_bytes: Bytes = encrypted_message.into();
 
         self.length_delimited_codec.encode(
-            Bytes::from(if self.compress {
-                compress(result_bytes.as_slice(), None, true)?
+            if self.compress {
+                Bytes::from(compress(result_bytes.chunk(), None, true)?)
             } else {
                 result_bytes
-            }),
+            },
             dst,
         )?;
         Ok(())

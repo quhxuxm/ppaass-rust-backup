@@ -49,7 +49,7 @@ pub struct PpaassAgentMessagePayload {
     /// The payload type
     payload_type: PpaassAgentMessagePayloadType,
     /// The data
-    data: Vec<u8>,
+    data: Bytes,
 }
 
 #[derive(Debug)]
@@ -61,14 +61,14 @@ pub struct PpaassAgentMessagePayloadSplitResult {
     /// The payload type
     pub payload_type: PpaassAgentMessagePayloadType,
     /// The data
-    pub data: Vec<u8>,
+    pub data: Bytes,
 }
 
 impl PpaassAgentMessagePayload {
     pub fn new(source_address: PpaassAddress,
         target_address: PpaassAddress,
         payload_type: PpaassAgentMessagePayloadType,
-        data: Vec<u8>) -> Self {
+        data: Bytes) -> Self {
         PpaassAgentMessagePayload { source_address, target_address, payload_type, data }
     }
 
@@ -82,7 +82,7 @@ impl PpaassAgentMessagePayload {
     }
 }
 
-impl From<PpaassAgentMessagePayload> for Vec<u8> {
+impl From<PpaassAgentMessagePayload> for Bytes {
     fn from(value: PpaassAgentMessagePayload) -> Self {
         let mut result = BytesMut::new();
         result.put_u8(value.payload_type.into());
@@ -95,16 +95,16 @@ impl From<PpaassAgentMessagePayload> for Vec<u8> {
         result.put_u64(target_address_length as u64);
         result.put_slice(target_address.as_slice());
         result.put_u64(value.data.len() as u64);
-        result.put_slice(value.data.as_slice());
-        result.to_vec()
+        result.put(value.data);
+        result.into()
     }
 }
 
-impl TryFrom<Vec<u8>> for PpaassAgentMessagePayload {
+impl TryFrom<Bytes> for PpaassAgentMessagePayload {
     type Error = PpaassCommonError;
 
-    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
-        let mut bytes = Bytes::from(value);
+    fn try_from(value: Bytes) -> Result<Self, Self::Error> {
+        let mut bytes =value;
         let payload_type: PpaassAgentMessagePayloadType = bytes.get_u8().try_into()?;
         let source_address_length = bytes.get_u64() as usize;
         let source_address_bytes = bytes.copy_to_bytes(source_address_length);
@@ -113,8 +113,7 @@ impl TryFrom<Vec<u8>> for PpaassAgentMessagePayload {
         let target_address_bytes = bytes.copy_to_bytes(target_address_length);
         let target_address = target_address_bytes.to_vec().try_into()?;
         let data_length = bytes.get_u64() as usize;
-        let data_bytes = bytes.copy_to_bytes(data_length);
-        let data = data_bytes.to_vec();
+        let data = bytes.copy_to_bytes(data_length);
         Ok(Self {
             payload_type,
             source_address,

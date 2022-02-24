@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use bytes::BufMut;
+use bytes::{Buf, BufMut, Bytes};
 use chrono::Utc;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
@@ -200,7 +200,7 @@ impl Socks5Transport {
                     source_address.clone(),
                     target_address.clone(),
                     PpaassAgentMessagePayloadType::TcpConnect,
-                    vec![],
+                    Bytes::new(),
                 );
                 let connect_message = PpaassMessage::new(
                     "".to_string(),
@@ -329,7 +329,7 @@ impl Socks5Transport {
                     udp_source_address.clone(),
                     udp_target_address.clone(),
                     PpaassAgentMessagePayloadType::UdpAssociate,
-                    vec![],
+                    Bytes::new(),
                 );
                 let udp_associate_message = PpaassMessage::new(
                     "".to_string(),
@@ -571,7 +571,7 @@ impl Socks5Transport {
                     source_address_for_proxy,
                     udp_message_target_address,
                     PpaassAgentMessagePayloadType::UdpData,
-                    socks5_udp_data_request.data().to_vec(),
+                    socks5_udp_data_request.data().clone(),
                 );
                 let udp_data_message = PpaassMessage::new(
                     connect_message_id.clone(),
@@ -631,7 +631,7 @@ impl Socks5Transport {
                 info!(
                     "Receive data from target, socks5 transport: [{}], data: \n{}\n",
                     transport_id_for_proxy_to_client_relay,
-                    String::from_utf8(proxy_message_payload_data.clone())
+                    String::from_utf8(proxy_message_payload_data.clone().to_vec())
                         .unwrap_or_else(|e| format!("{:#?}", e))
                 );
                 match proxy_message_payload_type {
@@ -660,7 +660,7 @@ impl Socks5Transport {
                                     proxy_message_payload_data,
                                 ),
                             };
-                        let socks5_udp_data_response_bytes: Vec<u8> =
+                        let socks5_udp_data_response_bytes: Bytes=
                             socks5_udp_data_response.into();
 
                         let udp_client_socket_address = PpaassAddress::new(
@@ -684,7 +684,7 @@ impl Socks5Transport {
                         );
                         if let Err(e) = agent_bind_udp_socket_p2c
                             .send_to(
-                                socks5_udp_data_response_bytes.as_slice(),
+                                socks5_udp_data_response_bytes.chunk(),
                                 udp_client_socket_address,
                             )
                             .await
@@ -747,7 +747,7 @@ impl Socks5Transport {
                             source_address.clone(),
                             target_address.clone(),
                             PpaassAgentMessagePayloadType::TcpConnectionClose,
-                            vec![],
+                            Bytes::new(),
                         );
                         let connection_close_message = PpaassMessage::new(
                             connect_message_id_c2p.clone(),
@@ -773,7 +773,7 @@ impl Socks5Transport {
                         source_address.clone(),
                         target_address.clone(),
                         PpaassAgentMessagePayloadType::TcpConnectionClose,
-                        read_buf,
+                        read_buf.into(),
                     );
                     let connection_close_message = PpaassMessage::new(
                         connect_message_id_c2p.clone(),
@@ -796,7 +796,7 @@ impl Socks5Transport {
                     source_address.clone(),
                     target_address.clone(),
                     PpaassAgentMessagePayloadType::TcpData,
-                    read_buf,
+                    read_buf.into(),
                 );
                 let data_message = PpaassMessage::new(
                     connect_message_id_c2p.clone(),

@@ -288,7 +288,7 @@ pub(crate) struct Socks5UdpDataRequest {
     addr_type: Socks5AddrType,
     dst_addr: Vec<u8>,
     dst_port: u16,
-    data: Vec<u8>,
+    data: Bytes,
 }
 
 impl Socks5UdpDataRequest {
@@ -308,15 +308,15 @@ impl Socks5UdpDataRequest {
         self.dst_port
     }
 
-    pub fn data(&self) -> &Vec<u8> {
+    pub fn data(&self) -> &Bytes {
         &self.data
     }
 }
 
-impl TryFrom<Vec<u8>> for Socks5UdpDataRequest {
+impl TryFrom<Bytes> for Socks5UdpDataRequest {
     type Error = PpaassAgentError;
 
-    fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
+    fn try_from(bytes: Bytes) -> Result<Self, Self::Error> {
         let mut bytes_obj = Bytes::from(bytes);
         bytes_obj.get_u16();
         let frag = bytes_obj.get_u8();
@@ -347,14 +347,22 @@ impl TryFrom<Vec<u8>> for Socks5UdpDataRequest {
             }
         };
         let port = bytes_obj.get_u16();
-        let data = bytes_obj.chunk().to_vec();
         Ok(Self {
             frag,
             addr_type,
             dst_addr: host,
             dst_port: port,
-            data,
+            data: bytes_obj,
         })
+    }
+}
+
+impl TryFrom<Vec<u8>> for Socks5UdpDataRequest {
+    type Error = PpaassAgentError;
+
+    fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
+        let mut bytes_obj = Bytes::from(bytes);
+        Socks5UdpDataRequest::try_from(bytes_obj)
     }
 }
 
@@ -364,7 +372,7 @@ pub(crate) struct Socks5UdpDataResponse {
     addr_type: Socks5AddrType,
     dst_addr: Vec<u8>,
     dst_port: u16,
-    data: Vec<u8>,
+    data: Bytes,
 }
 
 impl Socks5UdpDataResponse {
@@ -373,7 +381,7 @@ impl Socks5UdpDataResponse {
         addr_type: Socks5AddrType,
         dst_addr: Vec<u8>,
         dst_port: u16,
-        data: Vec<u8>,
+        data: Bytes,
     ) -> Self {
         Self {
             frag,
@@ -385,7 +393,7 @@ impl Socks5UdpDataResponse {
     }
 }
 
-impl From<Socks5UdpDataResponse> for Vec<u8> {
+impl From<Socks5UdpDataResponse> for Bytes {
     fn from(value: Socks5UdpDataResponse) -> Self {
         let mut result = BytesMut::new();
         result.put_u16(0);
@@ -410,8 +418,8 @@ impl From<Socks5UdpDataResponse> for Vec<u8> {
             }
         }
         result.put_u16(value.dst_port);
-        result.put_slice(value.data.as_slice());
-        result.to_vec()
+        result.put_slice(value.data.chunk());
+        result.into()
     }
 }
 
@@ -421,17 +429,17 @@ pub(crate) struct UdpDiagram {
     pub target_port: u16,
     pub length: u16,
     pub checksum: u16,
-    pub data: Vec<u8>,
+    pub data: Bytes,
 }
 
-impl From<Vec<u8>> for UdpDiagram {
-    fn from(bytes: Vec<u8>) -> Self {
+impl From<Bytes> for UdpDiagram {
+    fn from(bytes: Bytes) -> Self {
         let mut bytes = Bytes::from(bytes);
         let source_port = bytes.get_u16();
         let target_port = bytes.get_u16();
         let length = bytes.get_u16();
         let checksum = bytes.get_u16();
-        let data: Vec<u8> = bytes.copy_to_bytes(length as usize).to_vec();
+        let data: Bytes = bytes.copy_to_bytes(length as usize);
         Self {
             source_port,
             target_port,
@@ -449,7 +457,7 @@ impl From<UdpDiagram> for Vec<u8> {
         result.put_u16(value.target_port);
         result.put_u16(value.length);
         result.put_u16(value.checksum);
-        result.put_slice(value.data.as_slice());
+        result.put_slice(value.data.chunk());
         result.to_vec()
     }
 }

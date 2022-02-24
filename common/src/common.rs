@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
+use std::ops::Index;
 use std::str::FromStr;
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
@@ -355,7 +356,7 @@ pub struct PpaassMessage {
     /// The payload encryption type
     payload_encryption_type: PpaassMessagePayloadEncryptionType,
     /// The payload
-    payload: Vec<u8>,
+    payload: Bytes,
 }
 
 #[derive(Debug)]
@@ -371,7 +372,7 @@ pub struct PpaassMessageSplitResult {
     /// The payload encryption type
     pub payload_encryption_type: PpaassMessagePayloadEncryptionType,
     /// The payload
-    pub payload: Vec<u8>,
+    pub payload: Bytes,
 }
 
 impl PpaassMessage {
@@ -379,7 +380,7 @@ impl PpaassMessage {
         ref_id: String,
         user_token: Vec<u8>,
         payload_encryption_token: Vec<u8>,
-        payload: Vec<u8>,
+        payload: Bytes,
     ) -> Self {
         let id = generate_uuid();
         let payload_encryption_type = PpaassMessagePayloadEncryptionType::random();
@@ -397,7 +398,7 @@ impl PpaassMessage {
         user_token: Vec<u8>,
         payload_encryption_token: Vec<u8>,
         payload_encryption_type: PpaassMessagePayloadEncryptionType,
-        payload: Vec<u8>,
+        payload: Bytes,
     ) -> Self {
         let id = generate_uuid();
         Self {
@@ -438,12 +439,12 @@ impl PpaassMessage {
     pub fn payload_encryption_type(&self) -> &PpaassMessagePayloadEncryptionType {
         &self.payload_encryption_type
     }
-    pub fn payload(&self) -> &Vec<u8> {
+    pub fn payload(&self) -> &Bytes {
         &self.payload
     }
 }
 
-impl From<PpaassMessage> for Vec<u8> {
+impl From<PpaassMessage> for Bytes {
     fn from(value: PpaassMessage) -> Self {
         let mut result = BytesMut::new();
         let id_length = value.id.as_bytes().len();
@@ -460,16 +461,16 @@ impl From<PpaassMessage> for Vec<u8> {
         result.put_slice(value.payload_encryption_token.as_slice());
         result.put_u8(value.payload_encryption_type.into());
         result.put_u64(value.payload.len() as u64);
-        result.put_slice(value.payload.as_slice());
-        result.to_vec()
+        result.put(value.payload);
+        result.into()
     }
 }
 
-impl TryFrom<Vec<u8>> for PpaassMessage {
+impl TryFrom<Bytes> for PpaassMessage {
     type Error = PpaassCommonError;
 
-    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
-        let mut bytes = Bytes::from(value);
+    fn try_from(value: Bytes) -> Result<Self, Self::Error> {
+        let mut bytes = value;
         let id_length = bytes.get_u64();
         let id_bytes = bytes.copy_to_bytes(id_length as usize);
         let id = String::from_utf8(id_bytes.to_vec())?;
@@ -486,7 +487,7 @@ impl TryFrom<Vec<u8>> for PpaassMessage {
         let payload_encryption_type: PpaassMessagePayloadEncryptionType =
             bytes.get_u8().try_into()?;
         let payload_length = bytes.get_u64() as usize;
-        let payload = bytes.copy_to_bytes(payload_length).to_vec();
+        let payload =bytes.copy_to_bytes(payload_length);
         Ok(Self {
             id,
             ref_id,
@@ -495,5 +496,14 @@ impl TryFrom<Vec<u8>> for PpaassMessage {
             payload_encryption_token,
             payload,
         })
+    }
+}
+
+impl TryFrom<Vec<u8>> for PpaassMessage {
+    type Error = PpaassCommonError;
+
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        let mut bytes = Bytes::from(value);
+        PpaassMessage::try_from(bytes)
     }
 }

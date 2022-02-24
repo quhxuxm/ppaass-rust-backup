@@ -46,7 +46,9 @@ impl TryFrom<u8> for PpaassProxyMessagePayloadType {
             22 => Ok(PpaassProxyMessagePayloadType::UdpAssociateFail),
             23 => Ok(PpaassProxyMessagePayloadType::UdpDataRelayFail),
             24 => Ok(PpaassProxyMessagePayloadType::UdpData),
-            _ => Err(PpaassCommonError::FailToParsePpaassProxyMessagePayloadType(value))
+            _ => Err(PpaassCommonError::FailToParsePpaassProxyMessagePayloadType(
+                value,
+            )),
         }
     }
 }
@@ -61,7 +63,7 @@ pub struct PpaassProxyMessagePayload {
     /// The payload type
     payload_type: PpaassProxyMessagePayloadType,
     /// The data
-    data: Vec<u8>,
+    data: Bytes,
 }
 #[derive(Debug)]
 pub struct PpaassProxyMessagePayloadSplitResult {
@@ -72,14 +74,21 @@ pub struct PpaassProxyMessagePayloadSplitResult {
     /// The payload type
     pub payload_type: PpaassProxyMessagePayloadType,
     /// The data
-    pub data: Vec<u8>,
+    pub data: Bytes,
 }
 impl PpaassProxyMessagePayload {
-    pub fn new(source_address: PpaassAddress,
+    pub fn new(
+        source_address: PpaassAddress,
         target_address: PpaassAddress,
         payload_type: PpaassProxyMessagePayloadType,
-        data: Vec<u8>) -> Self {
-        PpaassProxyMessagePayload { source_address, target_address, payload_type, data }
+        data: Bytes,
+    ) -> Self {
+        PpaassProxyMessagePayload {
+            source_address,
+            target_address,
+            payload_type,
+            data,
+        }
     }
 
     pub fn split(self) -> PpaassProxyMessagePayloadSplitResult {
@@ -92,7 +101,7 @@ impl PpaassProxyMessagePayload {
     }
 }
 
-impl From<PpaassProxyMessagePayload> for Vec<u8> {
+impl From<PpaassProxyMessagePayload> for Bytes {
     fn from(value: PpaassProxyMessagePayload) -> Self {
         let mut result = BytesMut::new();
         result.put_u8(value.payload_type.into());
@@ -103,16 +112,16 @@ impl From<PpaassProxyMessagePayload> for Vec<u8> {
         result.put_u64(target_address.len() as u64);
         result.put_slice(target_address.as_slice());
         result.put_u64(value.data.len() as u64);
-        result.put_slice(value.data.as_slice());
-        result.to_vec()
+        result.put(value.data);
+        result.into()
     }
 }
 
-impl TryFrom<Vec<u8>> for PpaassProxyMessagePayload {
+impl TryFrom<Bytes> for PpaassProxyMessagePayload {
     type Error = PpaassCommonError;
 
-    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
-        let mut bytes = Bytes::from(value);
+    fn try_from(value: Bytes) -> Result<Self, Self::Error> {
+        let mut bytes = value;
         let payload_type: PpaassProxyMessagePayloadType = bytes.get_u8().try_into()?;
         let source_address_length = bytes.get_u64() as usize;
         let source_address_bytes = bytes.copy_to_bytes(source_address_length);
@@ -121,8 +130,7 @@ impl TryFrom<Vec<u8>> for PpaassProxyMessagePayload {
         let target_address_bytes = bytes.copy_to_bytes(target_address_length);
         let target_address = target_address_bytes.to_vec().try_into()?;
         let data_length = bytes.get_u64() as usize;
-        let data_bytes = bytes.copy_to_bytes(data_length);
-        let data = data_bytes.to_vec();
+        let data = bytes.copy_to_bytes(data_length);
         Ok(Self {
             payload_type,
             source_address,
@@ -132,3 +140,11 @@ impl TryFrom<Vec<u8>> for PpaassProxyMessagePayload {
     }
 }
 
+impl TryFrom<Vec<u8>> for PpaassProxyMessagePayload {
+    type Error = PpaassCommonError;
+
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        let mut bytes = Bytes::from(value);
+        PpaassProxyMessagePayload::try_from(bytes)
+    }
+}
