@@ -45,8 +45,7 @@ impl Decoder for PpaassMessageCodec {
             Some(r) => r,
         };
         let encrypted_ppaass_message: PpaassMessage = if self.compress {
-            let lz4_bytes = length_delimited_decode_result.to_vec();
-            let lz4_decompress_result = decompress(lz4_bytes.as_slice(), None)?;
+            let lz4_decompress_result = decompress(length_delimited_decode_result.chunk(), None)?;
             lz4_decompress_result.try_into()?
         } else {
             length_delimited_decode_result.to_vec().try_into()?

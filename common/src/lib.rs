@@ -1,3 +1,4 @@
+extern crate core;
 use uuid::Uuid;
 
 pub mod agent;
