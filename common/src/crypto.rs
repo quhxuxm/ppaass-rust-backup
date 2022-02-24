@@ -30,19 +30,23 @@ impl RsaCrypto {
         }
     }
 
-    pub(crate) fn encrypt(&self, target: &[u8]) -> Result<Vec<u8>, PpaassCommonError> {
-        let public_key = RsaPublicKey::from_public_key_pem(self.public_key).map_err(|source| PpaassCommonError::FailToParseRsaKey { source })?;
+    pub(crate) fn encrypt(&self, target: &[u8]) -> Result<Bytes, PpaassCommonError> {
+        let public_key = RsaPublicKey::from_public_key_pem(self.public_key)
+            .map_err(|source| PpaassCommonError::FailToParseRsaKey { source })?;
         let mut rng = OsRng;
-        public_key.encrypt(
-            &mut rng,
-            PaddingScheme::PKCS1v15Encrypt,
-            target,
-        ).map_err(|source| PpaassCommonError::FailToEncryptDataWithRsa { source })
+        public_key
+            .encrypt(&mut rng, PaddingScheme::PKCS1v15Encrypt, target)
+            .map_err(|source| PpaassCommonError::FailToEncryptDataWithRsa { source })
+            .map(|v| v.into())
     }
 
-    pub(crate) fn decrypt(&self, target: &[u8]) -> Result<Vec<u8>, PpaassCommonError> {
-        let private_key = RsaPrivateKey::from_pkcs8_pem(self.private_key).map_err(|source| PpaassCommonError::FailToParseRsaKey { source })?;
-        private_key.decrypt(PaddingScheme::PKCS1v15Encrypt, target).map_err(|source| PpaassCommonError::FailToEncryptDataWithRsa { source })
+    pub(crate) fn decrypt(&self, target: &[u8]) -> Result<Bytes, PpaassCommonError> {
+        let private_key = RsaPrivateKey::from_pkcs8_pem(self.private_key)
+            .map_err(|source| PpaassCommonError::FailToParseRsaKey { source })?;
+        private_key
+            .decrypt(PaddingScheme::PKCS1v15Encrypt, target)
+            .map_err(|source| PpaassCommonError::FailToEncryptDataWithRsa { source })
+            .map(|v| v.into())
     }
 }
 

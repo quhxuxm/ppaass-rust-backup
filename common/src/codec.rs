@@ -67,18 +67,18 @@ impl Decoder for PpaassMessageCodec {
             PpaassMessagePayloadEncryptionType::Blowfish => {
                 let original_encryption_token = self
                     .rsa_crypto
-                    .decrypt(rsa_encrypted_payload_encryption_token.as_slice())?;
+                    .decrypt(rsa_encrypted_payload_encryption_token.chunk())?;
                 decrypt_with_blowfish(
-                    original_encryption_token.as_slice(),
+                    original_encryption_token.chunk(),
                     encrypted_payload.chunk(),
                 )
             }
             PpaassMessagePayloadEncryptionType::Aes => {
                 let original_encryption_token = self
                     .rsa_crypto
-                    .decrypt(rsa_encrypted_payload_encryption_token.as_slice())?;
+                    .decrypt(rsa_encrypted_payload_encryption_token.chunk())?;
                 decrypt_with_aes(
-                    original_encryption_token.as_slice(),
+                    original_encryption_token.chunk(),
                     encrypted_payload.chunk(),
                 )
             }
@@ -117,14 +117,14 @@ impl Encoder<PpaassMessage> for PpaassMessageCodec {
         } = original_message.split();
         let rsa_encrypted_payload_encryption_token = self
             .rsa_crypto
-            .encrypt(payload_encryption_token.as_slice())?;
+            .encrypt(payload_encryption_token.chunk())?;
         let encrypted_payload = match payload_encryption_type {
             PpaassMessagePayloadEncryptionType::Plain => payload,
             PpaassMessagePayloadEncryptionType::Blowfish => {
-                encrypt_with_blowfish(payload_encryption_token.as_slice(), payload.chunk())
+                encrypt_with_blowfish(payload_encryption_token.chunk(), payload.chunk())
             }
             PpaassMessagePayloadEncryptionType::Aes => {
-                encrypt_with_aes(payload_encryption_token.as_slice(), payload.chunk())
+                encrypt_with_aes(payload_encryption_token.chunk(), payload.chunk())
             }
         };
         let encrypted_message = PpaassMessage::new_with_random_encryption_type(

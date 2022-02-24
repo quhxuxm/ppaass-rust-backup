@@ -1,10 +1,10 @@
 use std::fmt::{Debug, Display, Formatter};
-use bytes::{Buf, Bytes, BytesMut};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
 use anyhow::Context;
 use anyhow::Result;
+use bytes::{Buf, Bytes, BytesMut};
 use bytes::BufMut;
 use chrono::Utc;
 use futures::sink::SinkExt;
@@ -198,7 +198,7 @@ impl Transport {
                             PpaassMessage::new_with_random_encryption_type(
                                 agent_message_id.clone(),
                                 user_token.clone(),
-                                generate_uuid().as_bytes().to_vec(),
+                                generate_uuid().into(),
                                 tcp_connect_fail_message_payload.into(),
                             );
                         if let Err(ppaass_error) =
@@ -228,7 +228,7 @@ impl Transport {
                 let tcp_connect_success_message = PpaassMessage::new_with_random_encryption_type(
                     agent_message_id.clone(),
                     user_token.clone(),
-                    generate_uuid().as_bytes().to_vec(),
+                    generate_uuid().into(),
                     tcp_connect_success_message_payload.into(),
                 );
                 if let Err(ppaass_error) =
@@ -269,7 +269,7 @@ impl Transport {
                 let udp_associate_success_message = PpaassMessage::new_with_random_encryption_type(
                     agent_message_id.clone(),
                     user_token.clone(),
-                    generate_uuid().as_bytes().to_vec(),
+                    generate_uuid().into(),
                     udp_associate_success_message_payload.into(),
                 );
                 if let Err(ppaass_error) = agent_stream_framed
@@ -418,7 +418,7 @@ impl Transport {
                     Ok(r) => r,
                 };
                 let (data_size, target_origin_address) = udp_relay_recv_result;
-                let udp_data_diagram =Bytes::from(buf[..data_size].to_vec());
+                let udp_data_diagram = Bytes::from(buf[..data_size].to_vec());
                 let target_address: PpaassAddress = target_origin_address.into();
                 let udp_data_message_payload = PpaassProxyMessagePayload::new(
                     //For udp data the source address is the client address to accept the udp package
@@ -430,7 +430,7 @@ impl Transport {
                 let udp_data_message = PpaassMessage::new_with_random_encryption_type(
                     "".to_string(),
                     user_token_for_target_to_proxy_relay.clone(),
-                    generate_uuid().as_bytes().to_vec(),
+                    generate_uuid().into(),
                     udp_data_message_payload.into(),
                 );
                 if let Err(e) = agent_write_part.send(udp_data_message).await {
@@ -550,9 +550,7 @@ impl Transport {
                 } = agent_message_payload.split();
                 match agent_message_payload_type {
                     PpaassAgentMessagePayloadType::TcpData => {
-                        if let Err(e) = target_write
-                            .write(agent_message_payload_data.chunk())
-                            .await
+                        if let Err(e) = target_write.write(agent_message_payload_data.chunk()).await
                         {
                             error!("Fail to send agent data from proxy to target because of error, transport:[{}], target address: [{}], error: {:#?}",
                                     transport_id_p2t, target_address_p2t, e);
@@ -617,7 +615,7 @@ impl Transport {
                         PpaassMessage::new_with_random_encryption_type(
                             "".to_string(),
                             user_token_t2p.clone(),
-                            generate_uuid().as_bytes().to_vec(),
+                            generate_uuid().into(),
                             tcp_connection_close_message_payload.into(),
                         );
                     if let Err(e) = agent_write_part.send(tcp_connection_close_message).await {
@@ -654,7 +652,7 @@ impl Transport {
                 let tcp_data_success_message = PpaassMessage::new_with_random_encryption_type(
                     "".to_string(),
                     user_token_t2p.clone(),
-                    generate_uuid().as_bytes().to_vec(),
+                    generate_uuid().into(),
                     tcp_data_success_message_payload.into(),
                 );
                 if let Err(e) = agent_write_part.send(tcp_data_success_message).await {

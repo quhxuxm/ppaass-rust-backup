@@ -8,7 +8,7 @@ use bytes::{Buf, BufMut, Bytes};
 use chrono::Utc;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
-use tokio::io::{split, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, split};
 use tokio::net::{TcpStream, UdpSocket};
 use tokio_util::codec::{Decoder, Framed};
 use tracing::{debug, error, info};
@@ -205,7 +205,7 @@ impl Socks5Transport {
                 let connect_message = PpaassMessage::new(
                     "".to_string(),
                     self.meta_info.user_token.clone(),
-                    generate_uuid().into_bytes(),
+                    generate_uuid().into(),
                     PpaassMessagePayloadEncryptionType::random(),
                     connect_message_payload.into(),
                 );
@@ -334,7 +334,7 @@ impl Socks5Transport {
                 let udp_associate_message = PpaassMessage::new(
                     "".to_string(),
                     self.meta_info.user_token.clone(),
-                    generate_uuid().into_bytes(),
+                    generate_uuid().into(),
                     PpaassMessagePayloadEncryptionType::random(),
                     udp_associate_message_payload.into(),
                 );
@@ -576,7 +576,7 @@ impl Socks5Transport {
                 let udp_data_message = PpaassMessage::new(
                     connect_message_id.clone(),
                     user_token_for_client_to_proxy_relay.clone(),
-                    generate_uuid().into_bytes(),
+                    generate_uuid().into(),
                     PpaassMessagePayloadEncryptionType::random(),
                     udp_data_message_body.into(),
                 );
@@ -752,7 +752,7 @@ impl Socks5Transport {
                         let connection_close_message = PpaassMessage::new(
                             connect_message_id_c2p.clone(),
                             user_token.clone(),
-                            generate_uuid().into_bytes(),
+                            generate_uuid().into(),
                             PpaassMessagePayloadEncryptionType::random(),
                             connection_close_message_body.into(),
                         );
@@ -778,7 +778,7 @@ impl Socks5Transport {
                     let connection_close_message = PpaassMessage::new(
                         connect_message_id_c2p.clone(),
                         user_token.clone(),
-                        generate_uuid().into_bytes(),
+                        generate_uuid().into(),
                         PpaassMessagePayloadEncryptionType::random(),
                         connection_close_message_body.into(),
                     );
@@ -801,7 +801,7 @@ impl Socks5Transport {
                 let data_message = PpaassMessage::new(
                     connect_message_id_c2p.clone(),
                     user_token.clone(),
-                    generate_uuid().into_bytes(),
+                    generate_uuid().into(),
                     PpaassMessagePayloadEncryptionType::random(),
                     data_message_body.into(),
                 );

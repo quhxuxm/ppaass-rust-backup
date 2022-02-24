@@ -10,7 +10,7 @@ use chrono::Utc;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use httpcodec::{BodyEncoder, HttpVersion, ReasonPhrase, RequestEncoder, Response, StatusCode};
-use tokio::io::{split, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, split};
 use tokio::net::TcpStream;
 use tokio_util::codec::{Decoder, Framed};
 use tracing::{debug, error, info};
@@ -224,7 +224,7 @@ impl HttpTransport {
         let connect_message = PpaassMessage::new(
             "".to_string(),
             self.meta_info.user_token.clone(),
-            generate_uuid().into_bytes(),
+            generate_uuid().into(),
             PpaassMessagePayloadEncryptionType::random(),
             connect_message_payload.into(),
         );
@@ -349,7 +349,7 @@ impl HttpTransport {
                 let init_data_message = PpaassMessage::new(
                     connect_message_id,
                     user_token.clone(),
-                    generate_uuid().into_bytes(),
+                    generate_uuid().into(),
                     PpaassMessagePayloadEncryptionType::random(),
                     init_data_message_body.into(),
                 );
@@ -382,7 +382,7 @@ impl HttpTransport {
                         let connection_close_message = PpaassMessage::new(
                             connect_message_id_c2p.clone(),
                             user_token.clone(),
-                            generate_uuid().into_bytes(),
+                            generate_uuid().into(),
                             PpaassMessagePayloadEncryptionType::random(),
                             connection_close_message_body.into(),
                         );
@@ -408,7 +408,7 @@ impl HttpTransport {
                     let connection_close_message = PpaassMessage::new(
                         connect_message_id_c2p.clone(),
                         user_token.clone(),
-                        generate_uuid().into_bytes(),
+                        generate_uuid().into(),
                         PpaassMessagePayloadEncryptionType::random(),
                         connection_close_message_body.into(),
                     );
@@ -431,7 +431,7 @@ impl HttpTransport {
                 let data_message = PpaassMessage::new(
                     connect_message_id_c2p.clone(),
                     user_token.clone(),
-                    generate_uuid().into_bytes(),
+                    generate_uuid().into(),
                     PpaassMessagePayloadEncryptionType::random(),
                     data_message_body.into(),
                 );

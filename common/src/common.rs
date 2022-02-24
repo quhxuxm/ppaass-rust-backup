@@ -352,7 +352,7 @@ pub struct PpaassMessage {
     /// The user token
     user_token: Vec<u8>,
     /// The payload encryption token
-    payload_encryption_token: Vec<u8>,
+    payload_encryption_token: Bytes,
     /// The payload encryption type
     payload_encryption_type: PpaassMessagePayloadEncryptionType,
     /// The payload
@@ -368,7 +368,7 @@ pub struct PpaassMessageSplitResult {
     /// The user token
     pub user_token: Vec<u8>,
     /// The payload encryption token
-    pub payload_encryption_token: Vec<u8>,
+    pub payload_encryption_token: Bytes,
     /// The payload encryption type
     pub payload_encryption_type: PpaassMessagePayloadEncryptionType,
     /// The payload
@@ -379,7 +379,7 @@ impl PpaassMessage {
     pub fn new_with_random_encryption_type(
         ref_id: String,
         user_token: Vec<u8>,
-        payload_encryption_token: Vec<u8>,
+        payload_encryption_token: Bytes,
         payload: Bytes,
     ) -> Self {
         let id = generate_uuid();
@@ -396,7 +396,7 @@ impl PpaassMessage {
     pub fn new(
         ref_id: String,
         user_token: Vec<u8>,
-        payload_encryption_token: Vec<u8>,
+        payload_encryption_token: Bytes,
         payload_encryption_type: PpaassMessagePayloadEncryptionType,
         payload: Bytes,
     ) -> Self {
@@ -433,7 +433,7 @@ impl PpaassMessage {
     pub fn user_token(&self) -> &Vec<u8> {
         &self.user_token
     }
-    pub fn payload_encryption_token(&self) -> &Vec<u8> {
+    pub fn payload_encryption_token(&self) -> &Bytes {
         &self.payload_encryption_token
     }
     pub fn payload_encryption_type(&self) -> &PpaassMessagePayloadEncryptionType {
@@ -458,7 +458,7 @@ impl From<PpaassMessage> for Bytes {
         result.put_slice(value.user_token.as_slice());
         let encryption_token_length = value.payload_encryption_token.len();
         result.put_u64(encryption_token_length as u64);
-        result.put_slice(value.payload_encryption_token.as_slice());
+        result.put_slice(value.payload_encryption_token.chunk());
         result.put_u8(value.payload_encryption_type.into());
         result.put_u64(value.payload.len() as u64);
         result.put(value.payload);
@@ -481,9 +481,8 @@ impl TryFrom<Bytes> for PpaassMessage {
         let user_token_bytes = bytes.copy_to_bytes(user_token_length as usize);
         let user_token: Vec<u8> = user_token_bytes.to_vec();
         let payload_encryption_token_length = bytes.get_u64();
-        let payload_encryption_token_bytes =
+        let payload_encryption_token =
             bytes.copy_to_bytes(payload_encryption_token_length as usize);
-        let payload_encryption_token = payload_encryption_token_bytes.to_vec();
         let payload_encryption_type: PpaassMessagePayloadEncryptionType =
             bytes.get_u8().try_into()?;
         let payload_length = bytes.get_u64() as usize;
