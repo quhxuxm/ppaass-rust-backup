@@ -395,9 +395,6 @@ impl Transport {
                 }
             }
         });
-        let target_to_proxy_buffer_size = PROXY_SERVER_CONFIG
-            .buffer_size()
-            .unwrap_or(DEFAULT_TCP_BUFFER_SIZE);
         let source_address_for_target_to_proxy_relay = match self.source_address.clone().take() {
             None => return Ok(()),
             Some(r) => r,
@@ -406,7 +403,7 @@ impl Transport {
             loop {
                 let source_address_for_target_to_proxy_relay =
                     source_address_for_target_to_proxy_relay.clone();
-                let mut buf = [0u8; DEFAULT_UDP_BUFFER_SIZE];
+                let mut buf = BytesMut::with_capacity(DEFAULT_UDP_BUFFER_SIZE);
                 let udp_relay_recv_result = match target_udp_socket_for_target_to_proxy_relay
                     .recv_from(&mut buf)
                     .await
@@ -418,14 +415,14 @@ impl Transport {
                     Ok(r) => r,
                 };
                 let (data_size, target_origin_address) = udp_relay_recv_result;
-                let udp_data_diagram = Bytes::from(buf[..data_size].to_vec());
+                let udp_data_diagram = buf.split_to(data_size);
                 let target_address: PpaassAddress = target_origin_address.into();
                 let udp_data_message_payload = PpaassProxyMessagePayload::new(
                     //For udp data the source address is the client address to accept the udp package
                     source_address_for_target_to_proxy_relay,
                     target_address,
                     PpaassProxyMessagePayloadType::UdpData,
-                    udp_data_diagram,
+                    udp_data_diagram.into(),
                 );
                 let udp_data_message = PpaassMessage::new_with_random_encryption_type(
                     "".to_string(),
