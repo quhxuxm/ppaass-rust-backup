@@ -3,7 +3,6 @@ use chrono::Local;
 use tracing::{error, info};
 use tracing_subscriber::fmt::format::Writer;
 use tracing_subscriber::fmt::time::FormatTime;
-use tracing_subscriber::util::SubscriberInitExt;
 
 use agent::config::AGENT_SERVER_CONFIG;
 use agent::server::Server;
