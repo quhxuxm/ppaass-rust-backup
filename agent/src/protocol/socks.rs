@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::Debug;
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 

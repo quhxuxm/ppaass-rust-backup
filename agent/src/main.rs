@@ -4,10 +4,9 @@ use tracing::{error, info};
 use tracing_subscriber::fmt::format::Writer;
 use tracing_subscriber::fmt::time::FormatTime;
 
-use agent::config::AGENT_SERVER_CONFIG;
-use agent::server::Server;
+use agent::{config::AGENT_SERVER_CONFIG, server::Server};
 
-struct LogTimer;
+pub(crate) struct LogTimer;
 
 impl FormatTime for LogTimer {
     fn format_time(&self, w: &mut Writer<'_>) -> std::fmt::Result {

@@ -1,8 +1,8 @@
 use crate::error::PpaassAgentError;
 
 pub(crate) struct ProxyAddress {
-    host: String,
     port: u16,
+    host: String,
 }
 
 impl TryFrom<String> for ProxyAddress {
@@ -15,13 +15,10 @@ impl TryFrom<String> for ProxyAddress {
             return Err(PpaassAgentError::FailToParseProxyAddress(value));
         }
         let host = proxy_address_parts[0].to_string();
-        let port = proxy_address_parts[1].parse::<u16>().map_err(|e| {
-            PpaassAgentError::FailToParseProxyAddress(value)
-        })?;
-        Ok(Self {
-            host,
-            port,
-        })
+        let port = proxy_address_parts[1]
+            .parse::<u16>()
+            .map_err(|_| PpaassAgentError::FailToParseProxyAddress(value))?;
+        Ok(Self { host, port })
     }
 }
 

@@ -1,8 +1,8 @@
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 
 use bytes::{Buf, BufMut, BytesMut};
-use tracing::info;
 use tokio_util::codec::{Decoder, Encoder};
+use tracing::info;
 
 use crate::error::PpaassAgentError;
 use crate::protocol::socks::{
@@ -26,7 +26,8 @@ impl Decoder for Socks5AuthCodec {
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         info!(
             "Socks5 authenticate command, transport: [{}], command: {:?}",
-            self.transport_id,  src.to_vec()
+            self.transport_id,
+            src.to_vec()
         );
         if src.len() < 2 {
             return Ok(None);
@@ -37,9 +38,9 @@ impl Decoder for Socks5AuthCodec {
         }
         let methods_number = src.get_u8();
         let mut methods = Vec::<Socks5AuthMethod>::new();
-        for i in 0..methods_number {
+        (0..methods_number).for_each(|_| {
             methods.push(Socks5AuthMethod::from(src.get_u8()));
-        }
+        });
         Ok(Some(Socks5AuthRequest::new(methods_number, methods)))
     }
 }
@@ -71,7 +72,8 @@ impl Decoder for Socks5ConnectCodec {
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         info!(
             "Socks5 connect command, transport: [{}], command: {:?}",
-            self.transport_id, src.to_vec()
+            self.transport_id,
+            src.to_vec()
         );
         if src.len() < 4 {
             return Ok(None);
@@ -86,14 +88,14 @@ impl Decoder for Socks5ConnectCodec {
         let host = match addr_type {
             Socks5AddrType::IpV4 => {
                 let mut host_bytes = Vec::<u8>::new();
-                for i in 0..4 {
+                (0..4).for_each(|_| {
                     host_bytes.push(src.get_u8());
-                }
+                });
                 host_bytes
             }
             Socks5AddrType::IpV6 => {
                 let mut host_bytes = Vec::<u8>::new();
-                for i in 0..16 {
+                for _ in 0..16 {
                     host_bytes.push(src.get_u8());
                 }
                 host_bytes
@@ -101,9 +103,9 @@ impl Decoder for Socks5ConnectCodec {
             Socks5AddrType::Domain => {
                 let domain_name_length = src.get_u8();
                 let mut host_bytes = Vec::<u8>::new();
-                for i in 0..domain_name_length {
+                (0..domain_name_length).for_each(|_| {
                     host_bytes.push(src.get_u8());
-                }
+                });
                 host_bytes
             }
         };
